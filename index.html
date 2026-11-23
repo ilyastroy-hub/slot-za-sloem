@@ -7,11 +7,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f1216">
-<meta name="apple-mobile-web-app-title" content="Скан">
+<meta name="apple-mobile-web-app-title" content="Слой за слоем">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<title>Скан строительства</title>
+<title>Слой за слоем</title>
 <style>
 :root{color-scheme:light dark;--bg:#f4f5f7;--panel:#fff;--fg:#14171a;--mut:#667085;--line:#d9dde3;--acc:#1f6feb;--accfg:#fff;--canvas:#e6e9ee;--danger:#d92d20;--warn:#fff4d6;--warnfg:#6b4e00}
 @media (prefers-color-scheme:dark){:root{--bg:#0f1216;--panel:#181c22;--fg:#eceff3;--mut:#98a2b3;--line:#2b313a;--acc:#4c8dff;--accfg:#0b0f14;--canvas:#222830;--danger:#ff6b60;--warn:#3a2f10;--warnfg:#ffd77a}}
@@ -159,7 +159,7 @@ nav button.active{color:var(--acc)}
 <noscript>Для работы нужен JavaScript.</noscript>
 <div id="app">
   <header>
-    <h1>Скан строительства</h1>
+    <h1>Слой за слоем</h1>
     <button id="projBtn" aria-label="Выбрать стену"></button>
     <button id="btnAdd" class="primary" aria-label="Добавить чертёж">+</button>
   </header>
@@ -486,18 +486,34 @@ const LS={
   get(k){try{return localStorage.getItem(k);}catch(e){return null;}},
   set(k,v){try{localStorage.setItem(k,v);}catch(e){}}
 };
+/* перенос настроек со старых имён (до переименования приложения) */
+['last','ack','brand','obj'].forEach(k=>{if(LS.get('sloy-'+k)==null){const v=LS.get('skan-'+k);if(v!=null) LS.set('sloy-'+k,v);}});
 
 /* ---------- Хранилище (IndexedDB, только на этом телефоне) ---------- */
 const DB=(function(){
   let db=null,ok=false;const mem=new Map();
   const store=mode=>db.transaction('projects',mode).objectStore('projects');
   const wrap=q=>new Promise((res,rej)=>{q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});
+  /* копируем проекты из старой базы «skan-stroitelstva», если новая пуста; старую не удаляем */
+  async function migrate(){
+    try{
+      if((await wrap(store('readonly').count()))>0) return;
+      if(!indexedDB.databases) return;
+      const dbs=await indexedDB.databases();
+      if(!dbs.some(d=>d.name==='skan-stroitelstva')) return;
+      const old=await new Promise((rs,rj)=>{const q=indexedDB.open('skan-stroitelstva');q.onsuccess=()=>rs(q.result);q.onerror=()=>rj(q.error);q.onblocked=()=>rj();});
+      if(!old.objectStoreNames.contains('projects')){old.close();return;}
+      const all=await wrap(old.transaction('projects','readonly').objectStore('projects').getAll());
+      old.close();
+      for(const p of all) await wrap(store('readwrite').put(p));
+    }catch(e){}
+  }
   return {
     open(){return new Promise(res=>{
       try{
-        const r=indexedDB.open('skan-stroitelstva',1);
+        const r=indexedDB.open('sloy-za-sloem',1);
         r.onupgradeneeded=()=>r.result.createObjectStore('projects',{keyPath:'id'});
-        r.onsuccess=()=>{db=r.result;ok=true;res(true);};
+        r.onsuccess=()=>{db=r.result;ok=true;migrate().then(()=>res(true),()=>res(true));};
         r.onerror=()=>res(false);r.onblocked=()=>res(false);
       }catch(e){res(false);}
     });},
@@ -1080,7 +1096,7 @@ function setCurrent(p){
   S.cur=p;S.draft=[];S.meas=[];S.img=null;S.layer='rough';S.imgFin=null;
   if(p&&p.viewOnly&&S.tool!=='pan'&&S.tool!=='measure') S.tool='pan';
   if(p){
-    LS.set('skan-last',p.id);
+    LS.set('sloy-last',p.id);
     const im=new Image();
     im.onload=()=>{if(S.cur===p){if(S.needFit||true) fitView();renderEditor();}};
     im.src=p.img;S.img=im;
@@ -1204,16 +1220,16 @@ async function exportDialog(kind){
   const src=v.scope==='all'?S.projects:v.scope==='obj'?sameObj:v.scope==='room'?sameRoom:v.scope==='grp'?sameGrp:[p];
   const b=BRAND.load(),brand=(b.name||b.contact||b.logo)?{name:b.name,contact:b.contact,logo:b.logo}:null;
   const list=src.map(x=>{const c=JSON.parse(JSON.stringify(x));if(view) c.viewOnly=true;if(brand&&!c.brand) c.brand=brand;return c;});
-  const payload={format:'skan-stroitelstva',v:1,view:view||undefined,projects:list};
+  const payload={format:'sloy-za-sloem',v:1,view:view||undefined,projects:list};
   let out=payload;
   if(v.pw){
     if(!(window.crypto&&crypto.subtle)){toast('Шифрование недоступно в этом браузере');return;}
-    try{out=Object.assign({format:'skan-stroitelstva',v:1,enc:true},await encryptText(JSON.stringify(payload),v.pw));}
+    try{out=Object.assign({format:'sloy-za-sloem',v:1,enc:true},await encryptText(JSON.stringify(payload),v.pw));}
     catch(e){toast('Не удалось зашифровать файл');return;}
   }
   const safe=slug(src.length>1?(v.scope==='room'?p.room:(v.scope==='obj'?p.obj:'obekt')):p.name)||'chertezh';
   const blob=new Blob([JSON.stringify(out)],{type:'application/json'});
-  await fileDone(blob,'skan-'+(view?'prosmotr-':'')+safe+'-'+new Date().toISOString().slice(0,10)+'.json','application/json',
+  await fileDone(blob,'sloy-'+(view?'prosmotr-':'')+safe+'-'+new Date().toISOString().slice(0,10)+'.json','application/json',
     view?'Файл для просмотра готов':'Копия готова',
     'Стен в файле: '+list.length+'. Размер '+Math.round(blob.size/1024)+' КБ. '+(view
       ?'Отправьте его заказчику или владельцу: на странице приложения нужно нажать «Открыть присланный файл».'
@@ -1225,7 +1241,7 @@ async function importFile(file){
   if(file.size>200e6){toast('Файл слишком большой');return;}
   let o;
   try{o=JSON.parse(await file.text());}catch(e){toast('Это не файл копии');return;}
-  if(!o||o.format!=='skan-stroitelstva'){toast('Это не файл копии');return;}
+  if(!o||(o.format!=='sloy-za-sloem'&&o.format!=='skan-stroitelstva')){toast('Это не файл копии');return;}
   if(o.enc){
     if(!(window.crypto&&crypto.subtle)){toast('Расшифровка недоступна в этом браузере');return;}
     const v=await modal({title:'Файл защищён паролем',fields:[{key:'pw',label:'Пароль',type:'password'}],ok:'Открыть'});
@@ -1599,13 +1615,13 @@ const BRAND={
   def(){return {name:'',contact:'',logo:'',badge:true};},
   load(){
     try{
-      const o=JSON.parse(LS.get('skan-brand')||'null');
+      const o=JSON.parse(LS.get('sloy-brand')||'null');
       if(!o||typeof o!=='object') return this.def();
       return {name:String(o.name||'').slice(0,80),contact:String(o.contact||'').slice(0,120),
         logo:/^data:image\/(png|jpeg);base64,/.test(o.logo||'')?o.logo:'',badge:o.badge!==false};
     }catch(e){return this.def();}
   },
-  save(b){LS.set('skan-brand',JSON.stringify(b));}
+  save(b){LS.set('sloy-brand',JSON.stringify(b));}
 };
 function brandCard(){
   const b=BRAND.load();
@@ -1619,7 +1635,7 @@ function brandCard(){
   c.append(el('div',{class:'row'},
     el('button',{onclick:()=>$('#fileLogo').click()},b.logo?'Заменить логотип':'Загрузить логотип'),
     b.logo?el('button',{class:'danger',onclick:()=>{b.logo='';BRAND.save(b);renderData();}},'Убрать логотип'):null),
-    el('button',{onclick:()=>{b.badge=!b.badge;BRAND.save(b);renderData();}},'Подпись «Сделано в Скан строительства»: '+(b.badge?'включена':'выключена')));
+    el('button',{onclick:()=>{b.badge=!b.badge;BRAND.save(b);renderData();}},'Подпись «Сделано в Слой за слоем»: '+(b.badge?'включена':'выключена')));
   return c;
 }
 $('#fileLogo').addEventListener('change',async e=>{
@@ -1691,7 +1707,7 @@ function docFooter(D){
   x.textAlign='left';if(left) x.fillText(fitText(x,left,820),MG,PH-58);
   x.textAlign='right';x.fillText('Стр. '+D.n,PW-MG,PH-58);
   x.textAlign='left';
-  if(b.badge){x.font=fontOf(18,false);x.fillText('Сделано в «Скан строительства»',MG,PH-26);}
+  if(b.badge){x.font=fontOf(18,false);x.fillText('Сделано в «Слой за слоем»',MG,PH-26);}
 }
 function put(D,text,o){
   const x=D.x,size=o.size||26;
@@ -1925,8 +1941,8 @@ async function buildReport(list,meta){
   await D.close();
   return makePdf(D.pages);
 }
-function loadObj(){try{const o=JSON.parse(LS.get('skan-obj')||'{}');return {obj:String(o.obj||'').slice(0,120),client:String(o.client||'').slice(0,80)};}catch(e){return {obj:'',client:''};}}
-function saveObj(o){LS.set('skan-obj',JSON.stringify(o));}
+function loadObj(){try{const o=JSON.parse(LS.get('sloy-obj')||'{}');return {obj:String(o.obj||'').slice(0,120),client:String(o.client||'').slice(0,80)};}catch(e){return {obj:'',client:''};}}
+function saveObj(o){LS.set('sloy-obj',JSON.stringify(o));}
 function reportCard(p){
   return el('div',{class:'card'},el('h2',null,'Паспорт скрытых коммуникаций'),
     el('div',{class:'mut'},'PDF для заказчика: фото до закрытия стен, трассы с номерами, глубина, длины, опорные точки и снимок после отделки. Создаётся на телефоне и никуда не отправляется.'),
@@ -2094,7 +2110,7 @@ $('#brClose').addEventListener('click',closeBrowser);
 $('#brAdd').addEventListener('click',()=>{closeBrowser();addWallMenu();});
 
 /* ---------- Офлайн и установка ---------- */
-const APP_VERSION='6.4';
+const APP_VERSION='6.5';
 const OFF={sw:'checking',cached:false,persisted:null};
 const INST={evt:null};
 async function refreshOffline(){
@@ -2181,15 +2197,15 @@ if(typeof ResizeObserver!=='undefined'){
   await DB.open();
   try{S.projects=(await DB.all()).sort((a,b)=>(a.updated||0)-(b.updated||0));}catch(e){S.projects=[];}
   S.projects.forEach(p=>{p.room=p.room||'';p.date=p.date||'';p.scaleCm=p.scaleCm||0;p.fin=p.fin||null;});
-  const last=LS.get('skan-last');
+  const last=LS.get('sloy-last');
   ED.size=fitCanvas(cv);
   setCurrent(S.projects.find(p=>p.id===last)||S.projects[S.projects.length-1]||null);
   setSaveState(DB.ok?'':'Хранилище недоступно: данные пропадут при закрытии страницы.');
   registerSW();refreshOffline().then(c=>{if(c) offlineChanged();});
   if(location.hash==='#test') window.__t={S,ED,alignInfo,applySim,edToScr,sibs};
-  if(!LS.get('skan-ack')){
+  if(!LS.get('sloy-ack')){
     await modal({title:'Важно',text:'Приложение показывает сети по вашему чертежу и ориентировочно. Сети могли быть перенесены при ремонте, а наложение на камере имеет погрешность в несколько сантиметров. Перед сверлением всегда проверяйте стену кабелеискателем. Чертежи хранятся только на этом телефоне.',ok:'Понятно',cancel:null});
-    LS.set('skan-ack','1');
+    LS.set('sloy-ack','1');
   }
 })();
 })();
