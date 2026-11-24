@@ -234,6 +234,11 @@ nav button.active{color:var(--acc)}
   #brBody{max-height:none}
   .cat{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
 }
+#undoBtn,#redoBtn{padding:0;min-width:40px;min-height:40px;font-size:18px;line-height:1}
+#undoBtn:disabled,#redoBtn:disabled{opacity:.35}
+#toast button{margin-left:12px;min-height:32px;padding:0 12px;font-size:13px;background:#4c8dff;color:#fff;border:0;border-radius:8px;font-weight:600}
+#toast:has(button){display:flex;align-items:center}
+@media (max-width:480px){header h1{font-size:13px}#undoBtn,#redoBtn{min-width:36px}header{gap:5px}}
 </style>
 </head>
 <body>
@@ -243,6 +248,8 @@ nav button.active{color:var(--acc)}
     <h1>Слой за слоем</h1>
     <button id="projBtn" aria-label="Выбрать стену"></button>
     <button id="passBtn" aria-label="Паспорт">Паспорт</button>
+    <button id="undoBtn" aria-label="Отменить" title="Отменить" disabled>↶</button>
+    <button id="redoBtn" aria-label="Повторить" title="Повторить" disabled>↷</button>
     <button id="btnAdd" class="primary" aria-label="Добавить чертёж">+</button>
   </header>
   <div id="saveState"></div>
@@ -279,11 +286,13 @@ nav button.active{color:var(--acc)}
       <div id="finBar" class="bar" hidden>
         <button id="finUndo">Убрать последнюю точку</button>
         <button id="finReset">Сбросить точки</button>
+        <button id="finExit">Готово</button>
       </div>
       <div id="draftBar" class="bar" hidden>
         <button id="dDone" class="primary">Готово</button>
         <button id="dUndo">Убрать точку</button>
         <button id="dReset">Сбросить</button>
+        <button id="dCancel">Отмена</button>
       </div>
       <div id="toolBar" class="bar">
         <button data-tool="pan">Двигать</button>
@@ -579,6 +588,35 @@ function cropLimits(w,h,pts){
   }
   return {l,t,r,b};
 }
+// История действий: копия без дублирования строк-изображений (строки неизменяемы)
+function cloneKeep(o){
+  if(Array.isArray(o)) return o.map(cloneKeep);
+  if(o&&typeof o==='object'){const r={};for(const k in o) r[k]=cloneKeep(o[k]);return r;}
+  return o;
+}
+function histSig(p){return JSON.stringify(p,(k,v)=>k==='updated'?undefined:(k==='img'&&typeof v==='string'?v.length:v));}
+function histLabel(a,b){
+  const n=x=>x?x.length:0,js=JSON.stringify;
+  if(a.img!==b.img) return 'Обрезан снимок монтажа';
+  if(!a.fin&&b.fin) return 'Добавлен снимок после отделки';
+  if(a.fin&&!b.fin) return 'Убран снимок после отделки';
+  if(a.fin&&b.fin&&a.fin.img!==b.fin.img) return (a.fin.w!==b.fin.w||a.fin.h!==b.fin.h)?'Обрезан снимок после отделки':'Заменён снимок после отделки';
+  if(n(a.routes)<n(b.routes)) return 'Добавлена трасса';
+  if(n(a.routes)>n(b.routes)) return 'Удалена трасса';
+  if(js(a.routes)!==js(b.routes)) return 'Изменена трасса';
+  if(n(a.anchors)<n(b.anchors)) return 'Добавлена опорная точка';
+  if(n(a.anchors)>n(b.anchors)) return 'Удалена опорная точка';
+  if(js(a.anchors)!==js(b.anchors)) return 'Изменена опорная точка';
+  if(a.fin&&b.fin){
+    if(n(a.fin.anchors)<n(b.fin.anchors)) return 'Добавлена точка на снимке отделки';
+    if(n(a.fin.anchors)>n(b.fin.anchors)) return 'Убрана точка на снимке отделки';
+    if(js(a.fin.anchors)!==js(b.fin.anchors)) return 'Сдвинута точка на снимке отделки';
+    if(js(a.fin.adj)!==js(b.fin.adj)) return 'Подгонка снимка';
+  }
+  if(a.scaleCm!==b.scaleCm) return 'Изменён масштаб';
+  if(['name','obj','room','kind','date'].some(k=>a[k]!==b[k])) return 'Изменены данные поверхности';
+  return 'Изменение';
+}
 //@@PURE-END
 
 const $=(s,r)=>(r||document).querySelector(s);
@@ -597,8 +635,10 @@ function el(tag,attrs,...kids){
   return e;
 }
 let toastT=null;
-function toast(msg,ms){
-  const t=$('#toast'); t.textContent=msg; t.hidden=false;
+function toast(msg,ms,act){
+  const t=$('#toast');t.replaceChildren(document.createTextNode(msg));t.hidden=false;
+  t.style.pointerEvents=act?'auto':'';
+  if(act) t.append(el('button',{onclick:()=>{t.hidden=true;act.fn();}},act.label));
   clearTimeout(toastT); toastT=setTimeout(()=>{t.hidden=true;},ms||2800);
 }
 const LS={
@@ -681,6 +721,7 @@ window.addEventListener('online',paintSave);window.addEventListener('offline',pa
 let saveT=null;
 function save(){
   if(!S.cur) return;
+  histCommit();
   S.cur.updated=Date.now();
   setSaveState('Сохранение…');
   clearTimeout(saveT);
@@ -761,7 +802,7 @@ function modal(o){
   });
 }
 $('#modal').addEventListener('click',e=>{if(e.target.id==='modal'&&modalCancel) modalCancel();});
-document.addEventListener('keydown',e=>{if(e.key!=='Escape') return;if(!$('#crop').hidden){$('#cropNo').click();return;}if(modalCancel) modalCancel();else if(cap.stream) capClose();else if(!$('#browser').hidden) closeBrowser();});
+document.addEventListener('keydown',e=>{if(e.key!=='Escape') return;if(!$('#crop').hidden){$('#cropNo').click();return;}if(modalCancel) modalCancel();else if(cap.stream) capClose();else if(!$('#browser').hidden) closeBrowser();else if(S.cur&&(S.draft.length||['route','anchor','adj','measure'].includes(S.tool))){S.draft=[];setTool('pan');}});
 
 /* ---------- Жесты ---------- */
 function gestures(target,h){
@@ -1016,6 +1057,8 @@ function updateEditorUI(){
   $('#finBar').hidden=!(has&&S.layer==='fin'&&cp.fin&&cp.fin.anchors.length>0&&!cp.viewOnly);
 }
 $$('#toolBar button').forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));
+$('#dCancel').addEventListener('click',()=>{S.draft=[];setTool('pan');});
+$('#finExit').addEventListener('click',()=>setTool('pan'));
 $('#dUndo').addEventListener('click',()=>{S.draft.pop();updateEditorUI();renderEditor();});
 $('#dReset').addEventListener('click',()=>{S.draft=[];updateEditorUI();renderEditor();});
 $$('#layerBar button').forEach(b=>b.addEventListener('click',()=>setLayer(b.dataset.layer)));
@@ -1315,6 +1358,7 @@ async function fileToImage(file){
 function setCurrent(p,keepLayer){
   const L0=S.layer;
   S.cur=p;S.draft=[];S.meas=[];S.img=null;S.layer='rough';S.imgFin=null;
+  histBase(p);
   if(keepLayer&&p&&p.fin&&(L0==='fin'||(L0==='blend'&&alignInfo(p)))) S.layer=L0;
   if(p&&p.viewOnly&&S.tool!=='pan'&&S.tool!=='measure') S.tool='pan';
   if(p){
@@ -1516,12 +1560,121 @@ async function delAnchor(a){
   removeAnchor(S.cur,a);
   save();renderEditor();renderData();
 }
+const H={undo:[],redo:[],base:new Map(),busy:false,last:0};
+function histBase(p){if(p&&!p.viewOnly&&!H.base.has(p.id)) H.base.set(p.id,cloneKeep(p));}
+function histPush(e){
+  H.undo.push(e);if(H.undo.length>60) H.undo.shift();H.redo=[];H.last=Date.now();histUI();
+  if(/^(Удал|Убран|Обрезан|Заменён|Перенос)/.test(e.label)) toast(e.label,5500,{label:'Отменить',fn:histUndo});
+}
+function histCommit(){
+  const p=S.cur;if(!p||H.busy||p.viewOnly) return;
+  const prev=H.base.get(p.id),cur=cloneKeep(p);
+  if(!prev){H.base.set(p.id,cur);return;}
+  if(histSig(prev)===histSig(cur)) return;
+  const top=H.undo[H.undo.length-1],now=Date.now();
+  if(top&&top.items&&top.items.length===1&&top.items[0].id===p.id&&now-H.last<700){
+    top.label=histLabel(top.items[0].snap,cur);H.last=now;H.base.set(p.id,cur);H.redo=[];histUI();return;
+  }
+  H.base.set(p.id,cur);
+  histPush({items:[{id:p.id,snap:prev}],label:histLabel(prev,cur),name:p.name,t:now});
+}
+// действие над несколькими поверхностями сразу (перенос, переименование комнаты)
+async function histBatch(label,ps,fn){
+  const items=ps.map(x=>({id:x.id,snap:cloneKeep(x)}));
+  await fn();
+  ps.forEach(x=>H.base.set(x.id,cloneKeep(x)));
+  histPush({items,label,name:S.cur?S.cur.name:'',t:Date.now()});
+}
+async function histApply(e,dest){
+  H.busy=true;
+  try{
+    if(e.kind==='del'){
+      S.projects.splice(Math.min(e.idx,S.projects.length),0,e.p);
+      try{await DB.put(e.p);}catch(_){}
+      H.base.set(e.p.id,cloneKeep(e.p));
+      dest.push({kind:'undel',id:e.p.id,p:e.p,idx:e.idx,label:e.label,name:e.name,t:Date.now()});
+      setCurrent(e.p);
+    }else if(e.kind==='undel'){
+      const p=S.projects.find(x=>x.id===e.id);if(!p) return false;
+      try{await DB.del(p.id);}catch(_){}
+      S.projects=S.projects.filter(x=>x!==p);H.base.delete(p.id);
+      dest.push({kind:'del',p,idx:e.idx,label:e.label,name:e.name,t:Date.now()});
+      setCurrent(S.projects[0]||null);
+    }else{
+      const items=[];let focus=null;
+      for(const it of e.items){
+        const p=S.projects.find(x=>x.id===it.id);if(!p) continue;
+        items.push({id:p.id,snap:cloneKeep(p)});
+        const oi=p.img,of=p.fin&&p.fin.img;
+        for(const k of Object.keys(p)) delete p[k];
+        Object.assign(p,cloneKeep(it.snap));p.updated=Date.now();
+        try{await DB.put(p);}catch(_){}
+        H.base.set(p.id,cloneKeep(p));
+        if(!focus) focus={p,imgChanged:oi!==p.img||of!==(p.fin&&p.fin.img)};
+      }
+      if(!items.length) return false;
+      dest.push({items,label:e.label,name:e.name,t:Date.now()});
+      if(S.cur!==focus.p||focus.imgChanged||(S.layer!=='rough'&&!focus.p.fin)) setCurrent(focus.p,true);
+      else{S.draft=[];renderAll();}
+    }
+  }finally{H.busy=false;}
+  histUI();return true;
+}
+async function histUndo(){
+  const e=H.undo.pop();if(!e){toast('Отменять пока нечего');return;}
+  if(await histApply(e,H.redo)) toast('Отменено: '+e.label,4000,{label:'Повторить',fn:histRedo});
+  else histUI();
+}
+async function histRedo(){
+  const e=H.redo.pop();if(!e){toast('Повторять пока нечего');return;}
+  if(await histApply(e,H.undo)) toast('Повторено: '+e.label,3000);
+  else histUI();
+}
+async function histRewind(n){
+  const ok=await modal({title:'Отменить действий: '+n+'?',text:'Приложение вернётся к состоянию до этих действий. Передумаете — кнопка ↷ вверху вернёт всё обратно, пока вы не закрыли приложение.',ok:'Отменить'});
+  if(!ok) return;
+  for(let i=0;i<n&&H.undo.length;i++){const e=H.undo.pop();await histApply(e,H.redo);}
+  toast('Возвращено действий: '+n,3500,{label:'Повторить',fn:histRedo});
+}
+function histUI(){
+  const u=$('#undoBtn'),r=$('#redoBtn');if(!u) return;
+  const tu=H.undo[H.undo.length-1],tr=H.redo[H.redo.length-1];
+  u.disabled=!tu;u.title=u.ariaLabel=tu?'Отменить: '+tu.label:'Отменить';
+  r.disabled=!tr;r.title=r.ariaLabel=tr?'Повторить: '+tr.label:'Повторить';
+  if(S.dataSec==='project'&&S.cur&&!S.cur.viewOnly) renderData();
+}
+$('#undoBtn').addEventListener('click',histUndo);
+$('#redoBtn').addEventListener('click',histRedo);
+document.addEventListener('keydown',e=>{
+  if(!(e.ctrlKey||e.metaKey)||e.altKey) return;
+  const t=e.target;if(t&&/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+  if(modalCancel||!$('#crop').hidden) return;
+  const k=(e.key||'').toLowerCase();
+  if(k==='z'&&!e.shiftKey){e.preventDefault();histUndo();}
+  else if(k==='y'||(k==='z'&&e.shiftKey)){e.preventDefault();histRedo();}
+});
+function histCard(){
+  const c=el('div',{class:'card'},el('h2',null,'История действий'));
+  if(!H.undo.length&&!H.redo.length){
+    c.append(el('div',{class:'mut'},'Пока пусто. Здесь появятся последние действия, любое можно отменить кнопкой ↶ вверху или клавишами Ctrl+Z.'));
+    return c;
+  }
+  c.append(el('div',{class:'mut'},'«Вернуть сюда» отменяет это действие и всё, что было после него. Обратно возвращает кнопка ↷. История хранится, пока приложение открыто.'));
+  H.undo.slice().reverse().slice(0,12).forEach((e,i)=>c.append(el('div',{class:'item'},
+    el('div',{class:'grow'},el('b',null,e.label),el('div',{class:'mut'},(e.name?e.name+' · ':'')+new Date(e.t).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}))),
+    el('button',{onclick:()=>histRewind(i+1)},'Вернуть сюда'))));
+  if(H.undo.length>1) c.append(el('button',{class:'danger',onclick:()=>histRewind(H.undo.length)},'Отменить всё ('+H.undo.length+')'));
+  return c;
+}
 async function delProject(){
   const p=S.cur;if(!p) return;
   const ok=await modal({title:'Удалить чертёж «'+p.name+'»?',text:'Он будет удалён с этого телефона. Если нужна копия, сначала сохраните её в файл.',ok:'Удалить'});
   if(!ok) return;
+  const idx=S.projects.indexOf(p);
   try{await DB.del(p.id);}catch(e){}
   S.projects=S.projects.filter(x=>x!==p);
+  H.base.delete(p.id);
+  histPush({kind:'del',p,idx,label:'Удалён чертёж «'+p.name+'»',name:p.name,t:Date.now()});
   setCurrent(S.projects[0]||null);
   setSaveState('');
 }
@@ -1568,7 +1721,7 @@ function dataProject(p,body){
       el('button',{onclick:openBrowser},'Каталог'),
       el('button',{onclick:()=>openPassport(p.obj||'',p.room||'')},'Паспорт'),
       el('button',{onclick:()=>openStickers(p.obj||'')},'Наклейки'))));
-  body.append(reportCard(p),brandCard());
+  body.append(reportCard(p),brandCard(),histCard());
   body.append(el('div',{class:'card'},el('h2',null,'Копия и удаление'),
     el('button',{class:'primary',onclick:exportProject},'Сохранить копию в файл'),
     el('button',{onclick:()=>exportDialog('view')},'Файл для просмотра (заказчику, владельцу)'),
@@ -2722,7 +2875,7 @@ async function moveSurface(p){
     fields:[{key:'obj',label:'Объект',value:p.obj||'',max:80,suggest:objNames()},{key:'room',label:'Комната',value:p.room||'',max:60,suggest:roomNames(p.obj||'')}],ok:'Перенести'});
   if(!v) return;
   const ps=p.group?S.projects.filter(x=>x.group===p.group):[p];
-  for(const x of ps){x.obj=v.obj.trim();x.room=v.room.trim();x.updated=Date.now();try{await DB.put(x);}catch(e){}}
+  await histBatch('Перенос в «'+(v.room.trim()||'без комнаты')+'»',ps,async()=>{for(const x of ps){x.obj=v.obj.trim();x.room=v.room.trim();x.updated=Date.now();try{await DB.put(x);}catch(e){}}});
   renderAll();
 }
 function openWall(p){closeBrowser();if(S.cur!==p) setCurrent(p);switchTab('draw');}
@@ -2735,7 +2888,7 @@ async function renameGroup(obj,room){
   if(!v) return;
   const nn=v.name.trim();
   const affected=S.projects.filter(p=>isRoom?((p.obj||'')===obj&&(p.room||'')===room):(p.obj||'')===obj);
-  for(const p of affected){if(isRoom) p.room=nn; else p.obj=nn;p.updated=Date.now();try{await DB.put(p);}catch(e){}}
+  await histBatch((isRoom?'Переименована комната':'Переименован объект')+' «'+nn+'»',affected,async()=>{for(const p of affected){if(isRoom) p.room=nn; else p.obj=nn;p.updated=Date.now();try{await DB.put(p);}catch(e){}}});
   renderAll();
 }
 function locationCard(p){
@@ -2753,7 +2906,7 @@ $('#brClose').addEventListener('click',closeBrowser);
 $('#brAdd').addEventListener('click',()=>{closeBrowser();addWallMenu();});
 
 /* ---------- Офлайн и установка ---------- */
-const APP_VERSION='7.0';
+const APP_VERSION='7.1';
 const OFF={sw:'checking',cached:false,persisted:null};
 const INST={evt:null};
 async function refreshOffline(){
