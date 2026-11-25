@@ -199,6 +199,10 @@ nav button.active{color:var(--acc)}
 #brKinds{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;flex:1 1 100%}
 #brKinds .fchip{white-space:nowrap}
 .fchip{min-height:36px;padding:0 12px;border-radius:999px;font-size:13px}
+body.client .crew,body.client #brObjAct{display:none!important}
+#roleBadge{font-size:11px;font-weight:600;color:#ffd60a;margin-left:6px}
+.cnote{border:1px solid #3a3f4a;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.cnote img{max-width:100%;border-radius:8px}
 #brObjAct{display:flex;gap:6px;flex:1 1 100%;overflow-x:auto}
 #brObjAct:empty{display:none}
 #brObjAct button{white-space:nowrap}
@@ -249,18 +253,23 @@ nav button.active{color:var(--acc)}
 .helpCard ol,.helpCard ul{margin:6px 0 4px;padding-left:20px;color:var(--mut);font-size:14px;line-height:1.5}
 .helpCard b{color:var(--fg)}
 @media (max-width:480px){#passBtn{display:none}}
+/* v7.6: этажи */
+.lvH{display:flex;align-items:center;gap:8px;margin:18px 0 -4px;padding:6px 10px;background:var(--panel);border-left:4px solid var(--acc);border-radius:6px;font-weight:650;font-size:15px}
+.lvH span{flex:1;min-width:0}
+.lvH button{min-height:30px;padding:0 10px;font-size:12px;font-weight:500}
+.lvH:first-child{margin-top:0}
 </style>
 </head>
 <body>
 <noscript>Для работы нужен JavaScript.</noscript>
 <div id="app">
   <header>
-    <h1>Слой за слоем</h1>
+    <h1>Слой за слоем<span id="roleBadge"></span></h1>
     <button id="projBtn" aria-label="Выбрать стену"></button>
     <button id="passBtn" aria-label="Паспорт">Паспорт</button>
-    <button id="undoBtn" aria-label="Отменить" title="Отменить" disabled>↶</button>
-    <button id="redoBtn" aria-label="Повторить" title="Повторить" disabled>↷</button>
-    <button id="btnAdd" class="primary" aria-label="Добавить чертёж">+</button>
+    <button id="undoBtn" class="crew" aria-label="Отменить" title="Отменить" disabled>↶</button>
+    <button id="redoBtn" class="crew" aria-label="Повторить" title="Повторить" disabled>↷</button>
+    <button id="btnAdd" class="primary crew" aria-label="Добавить чертёж">+</button>
   </header>
   <div id="saveState"></div>
 
@@ -412,6 +421,9 @@ const TYPES={
   sew:{name:'Канализация',color:'#a07850'},
   vent:{name:'Вентиляция',color:'#64d2ff'},
   gas:{name:'Газ',color:'#ffd60a'},
+  drain:{name:'Дренаж и водосток',color:'#00c7be'},
+  light:{name:'Наружное освещение',color:'#5e5ce6'},
+  heatc:{name:'Кабель обогрева',color:'#ff375f'},
   other:{name:'Другое',color:'#ffffff'}
 };
 const IDENT={a:1,b:0,tx:0,ty:0};
@@ -541,7 +553,16 @@ function sanitizeBrand(b){
     logo:(typeof b.logo==='string'&&/^data:image\/(png|jpeg);base64,/.test(b.logo)&&b.logo.length<=400000)?b.logo:''};
   return (o.name||o.contact||o.logo)?o:null;
 }
-const KINDS={wall:{name:'Стена',acc:'Стену'},floor:{name:'Пол',acc:'Пол'},ceiling:{name:'Потолок',acc:'Потолок'}};
+const KINDS={
+  wall:{name:'Стена',acc:'Стену',pl:['стена','стены','стен']},
+  floor:{name:'Пол',acc:'Пол',pl:['пол','пола','полов']},
+  ceiling:{name:'Потолок',acc:'Потолок',pl:['потолок','потолка','потолков']},
+  facade:{name:'Фасад',acc:'Фасад',opt:'Фасад (наружная стена)',pl:['фасад','фасада','фасадов'],ext:true},
+  terrace:{name:'Терраса',acc:'Террасу',opt:'Терраса, балкон, крыльцо',pl:['терраса','террасы','террас'],ext:true},
+  roof:{name:'Кровля',acc:'Кровлю',opt:'Кровля, крыша',pl:['кровля','кровли','кровель'],ext:true},
+  ground:{name:'Участок',acc:'Участок',opt:'Участок (земля, наружные сети)',pl:['участок','участка','участков'],ext:true}
+};
+const isExt=p=>!!(KINDS[p&&p.kind]&&KINDS[p.kind].ext);
 const ROUTE_COLORS=['#ff1744','#ff9100','#ffea00','#00e676','#00e5ff','#2979ff','#d500f9','#ff4fa3','#ffffff'];
 const HEXC=/^#[0-9a-fA-F]{6}$/;
 function sanitizeProject(o){
@@ -551,10 +572,11 @@ function sanitizeProject(o){
   if(!Array.isArray(o.routes)||o.routes.length>2000) throw new Error('routes');
   const anchorsIn=Array.isArray(o.anchors)?o.anchors:[];
   if(anchorsIn.length>4) throw new Error('anchors');
-  const p={name:String(o.name||'Чертёж').slice(0,60),kind:Object.prototype.hasOwnProperty.call(KINDS,o.kind)?o.kind:'wall',group:/^[A-Za-z0-9_-]{1,40}$/.test(String(o.group||''))?String(o.group):'',obj:String(o.obj||'').slice(0,80),room:String(o.room||'').slice(0,60),
+  const p={name:String(o.name||'Чертёж').slice(0,60),kind:Object.prototype.hasOwnProperty.call(KINDS,o.kind)?o.kind:'wall',group:/^[A-Za-z0-9_-]{1,40}$/.test(String(o.group||''))?String(o.group):'',obj:String(o.obj||'').slice(0,80),room:String(o.room||'').slice(0,60),level:String(o.level||'').slice(0,40),
     date:/^\d{4}-\d{2}-\d{2}$/.test(String(o.date||''))?o.date:'',
     scaleCm:(typeof o.scaleCm==='number'&&isFinite(o.scaleCm)&&o.scaleCm>0&&o.scaleCm<1e5)?o.scaleCm:0,
-    img:o.img,w:num(o.w,1,10000),h:num(o.h,1,10000),viewOnly:o.viewOnly===true,brand:sanitizeBrand(o.brand),routes:[],anchors:[]};
+    img:o.img,w:num(o.w,1,10000),h:num(o.h,1,10000),viewOnly:o.viewOnly===true,brand:sanitizeBrand(o.brand),routes:[],anchors:[],
+    cnotes:(Array.isArray(o.cnotes)?o.cnotes:[]).slice(0,60).filter(x=>x&&typeof x.t==='string').map(x=>({id:uid(),t:x.t.slice(0,600),date:/^\d{4}-\d{2}-\d{2}$/.test(String(x.date||''))?x.date:'',img:(typeof x.img==='string'&&/^data:image\/jpeg;base64,/.test(x.img)&&x.img.length<9e5)?x.img:''}))};
   for(const r of o.routes){
     if(!r||!Array.isArray(r.pts)||r.pts.length<2||r.pts.length>5000) throw new Error('pts');
     p.routes.push({
@@ -714,6 +736,8 @@ const DB=(function(){
 })();
 
 /* ---------- Состояние ---------- */
+let ROLE=(function(){try{return localStorage.getItem('sloy-role')==='client'?'client':'crew';}catch(e){return 'crew';}})();
+function vo(p){return !!(p&&(p.viewOnly||ROLE==='client'));}
 const S={dataSec:'project',lineW:1.5,preset:null,projects:[],cur:null,img:null,tool:'pan',draft:[],view:{s:1,tx:0,ty:0},needFit:false,lastType:'el',persistAsked:false,meas:[],layer:'rough',imgFin:null,finMode:false,blend:0.5};
 const ED={size:{w:0,h:0,d:1}};
 const CAM={stream:null,mode:'off',pts:[],T:null,adj:IDENT,size:null,frozen:false,alpha:0.85,ghost:0,probe:false,probeAt:null,hidden:new Set()};
@@ -725,22 +749,30 @@ function sibImg(x){let im=SIBIMG.get(x.id);if(!im||im._src!==x.img){im=new Image
 function sibs(p){return p&&p.group&&p.fin?S.projects.filter(x=>x!==p&&x.group===p.group&&x.fin&&x.fin.w===p.fin.w&&x.fin.h===p.fin.h&&alignInfo(x)):[];}
 const routeDims=r=>[r.depth?'глубина '+r.depth+' см':'',r.out?'выступ '+r.out+' см':''].filter(Boolean);
 function cleanText(t){return String(t==null?'':t).replace(/[^\p{L}\p{N} .,:;()№#+\/«»"'_–—·-]/gu,'').replace(/\s+/g,' ').trim();}
+function sameRoom(a,b){return (a.obj||'')===(b.obj||'')&&(a.level||'')===(b.level||'')&&(a.room||'')===(b.room||'');}
+function roomTitle(p){return [p.level,p.room].filter(Boolean).join(' · ');}
+const lvKey=(l,r)=>(l||'')+'\u0001'+(r||'');
+function lvTag(l){const d=String(l||'').match(/\d+/);return d?d[0]:String(l||'').replace(/[^\p{L}]/gu,'').slice(0,2).toUpperCase();}
+function lvCmp(a,b){a=a||'';b=b||'';return a===b?0:a===''?1:b===''?-1:a.localeCompare(b,'ru',{numeric:true});}
+const LEVEL_DEFAULTS=['Подвал','1 этаж','2 этаж','3 этаж','Мансарда','Чердак','Снаружи'];
+const ROOM_EXT=['Фасад','Терраса','Кровля','Участок'];
 function wallCodes(list){
   const cnt=new Map(),m=new Map(),gb=new Map(),gn=new Map();
   for(const p of list){
     if(p.group&&gb.has(p.group)){const b=gb.get(p.group),k=(gn.get(p.group)||1)+1;gn.set(p.group,k);m.set(p,{code:b.code+'.'+k,label:b.label+'.'+k});continue;}
     const room=cleanText(p.room).replace(/[^\p{L}\p{N}]/gu,'').slice(0,3).toUpperCase();
-    const key=(p.obj||'')+'|'+(p.kind||'wall')+'|'+room;
+    const lt=p.level?lvTag(p.level)+'.':'';
+    const key=(p.obj||'')+'|'+(p.level||'')+'|'+(p.kind||'wall')+'|'+room;
     const n=(cnt.get(key)||0)+1;cnt.set(key,n);
-    const code=room?room+'-'+n:String(n);
+    const code=room?lt+room+'-'+n:lt+String(n);
     m.set(p,{code,label:kindOf(p).name+' '+code});
     if(p.group) gb.set(p.group,m.get(p));
   }
   return m;
 }
-function defaultName(kind,obj,room){
+function defaultName(kind,obj,room,level){
   const k=KINDS[kind]||KINDS.wall;
-  const n=S.projects.filter(x=>(x.kind||'wall')===kind&&(x.obj||'')===(obj||'')&&(x.room||'')===(room||'')).length+1;
+  const n=S.projects.filter(x=>(x.kind||'wall')===kind&&(x.obj||'')===(obj||'')&&(x.room||'')===(room||'')&&(x.level||'')===(level||'')).length+1;
   return k.name+' '+n;
 }
 
@@ -1002,7 +1034,7 @@ async function edTap(x,y){
     if(S.layer==='fin'&&S.tool==='anchor') finAnchorTap(ix,iy,x,y);
     return;
   }
-  if(p.viewOnly&&(S.tool==='route'||S.tool==='anchor'||S.tool==='delete')) return;
+  if(vo(p)&&(S.tool==='route'||S.tool==='anchor'||S.tool==='delete')) return;
   if(S.tool==='route'){S.draft.push([ix,iy]);updateEditorUI();renderEditor();return;}
   if(S.tool==='anchor'){
     if(p.anchors.length>=4){toast('Достаточно 4 опорных точек');return;}
@@ -1074,7 +1106,7 @@ function updateEditorUI(){
   $('#dDone').textContent='Готово ('+S.draft.length+')';
   $$('#toolBar button').forEach(b=>{
     const t=b.dataset.tool,L=S.layer;
-    const ro=!!(S.cur&&S.cur.viewOnly);
+    const ro=!!(S.cur&&vo(S.cur));
     b.hidden=ro?!(t==='pan'||(t==='measure'&&L==='rough')):(L==='rough'?t==='adj':(L==='fin'?!(t==='pan'||t==='anchor'):!(t==='pan'||t==='adj')));
     b.classList.toggle('on',t===S.tool);
   });
@@ -1083,8 +1115,8 @@ function updateEditorUI(){
   $$('#layerBar button').forEach(b=>{b.classList.toggle('on',b.dataset.layer===S.layer);b.style.opacity=(!cp||cp.fin||b.dataset.layer==='rough')?'':'.6';});
   $('#blendRow').hidden=!(has&&S.layer==='blend');
   $('#lineRow').hidden=!(has&&S.layer!=='rough');
-  $('#adjBar').hidden=!(has&&S.layer==='blend'&&!cp.viewOnly&&S.tool==='adj');
-  $('#finBar').hidden=!(has&&S.layer==='fin'&&cp.fin&&cp.fin.anchors.length>0&&!cp.viewOnly);
+  $('#adjBar').hidden=!(has&&S.layer==='blend'&&!vo(cp)&&S.tool==='adj');
+  $('#finBar').hidden=!(has&&S.layer==='fin'&&cp.fin&&cp.fin.anchors.length>0&&!vo(cp));
 }
 $$('#toolBar button').forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));
 $('#dCancel').addEventListener('click',()=>{S.draft=[];setTool('pan');});
@@ -1170,7 +1202,7 @@ function alignText0(p,A){
 }
 function hintText(){
   const pv=S.cur;
-  if(pv&&pv.viewOnly&&S.layer==='rough'&&S.tool==='pan') return 'Режим просмотра: правка отключена. Касание трассы показывает подробности.';
+  if(pv&&vo(pv)&&S.layer==='rough'&&S.tool==='pan') return 'Режим просмотра: правка отключена. Касание трассы показывает подробности.';
   const p=S.cur;
   if(S.layer==='fin'&&p&&p.fin){
     const i=p.fin.anchors.length,a=p.anchors[i];
@@ -1188,7 +1220,7 @@ function setLayer(L){
   if((L==='fin'||L==='blend')&&!p.fin){startFin();return;}
   if(L==='blend'&&!alignInfo(p)){toast('Для наложения отметьте минимум 2 опорные точки на снимке отделки.',4500);L='fin';}
   S.layer=L;S.draft=[];S.meas=[];
-  S.tool=(L==='fin'&&!p.viewOnly&&p.fin.anchors.length<p.anchors.length)?'anchor':'pan';
+  S.tool=(L==='fin'&&!vo(p)&&p.fin.anchors.length<p.anchors.length)?'anchor':'pan';
   fitView();updateEditorUI();renderEditor();
 }
 function finAnchorTap(ix,iy,sx,sy){
@@ -1390,7 +1422,7 @@ function setCurrent(p,keepLayer){
   S.cur=p;S.draft=[];S.meas=[];S.img=null;S.layer='rough';S.imgFin=null;
   histBase(p);
   if(keepLayer&&p&&p.fin&&(L0==='fin'||(L0==='blend'&&alignInfo(p)))) S.layer=L0;
-  if(p&&p.viewOnly&&S.tool!=='pan'&&S.tool!=='measure') S.tool='pan';
+  if(p&&vo(p)&&S.tool!=='pan'&&S.tool!=='measure') S.tool='pan';
   if(p){
     LS.set('sloy-last',p.id);
     const im=new Image();
@@ -1421,7 +1453,7 @@ async function createProject(r,fname){
   if(pb&&S.projects.includes(pb)&&pb.fin){
     if(!pb.group) pb.group=uid();
     const n=S.projects.filter(x=>x.group===pb.group).length+1;
-    const np={id:uid(),name:pb.name.replace(/ · монтаж \d+$/,'')+' · монтаж '+n,kind:pb.kind||'wall',group:pb.group,obj:pb.obj||'',room:pb.room||'',date:todayLocal(),scaleCm:0,img:r.img,w:r.w,h:r.h,routes:[],anchors:[],
+    const np={id:uid(),name:pb.name.replace(/ · монтаж \d+$/,'')+' · монтаж '+n,kind:pb.kind||'wall',group:pb.group,obj:pb.obj||'',room:pb.room||'',level:pb.level||'',date:todayLocal(),scaleCm:0,img:r.img,w:r.w,h:r.h,routes:[],anchors:[],
       fin:{img:pb.fin.img,w:pb.fin.w,h:pb.fin.h,date:pb.fin.date,anchors:[]},updated:Date.now()};
     S.projects.push(np);setCurrent(np);save();switchTab('draw');
     toast('Отметьте опорные точки на новом снимке монтажа, затем те же точки на слое «Отделка».',6000);
@@ -1429,18 +1461,19 @@ async function createProject(r,fname){
   }
   const cur=S.cur;
   const pre=S.preset&&Date.now()-S.preset.t<180000?S.preset:null;S.preset=null;
-  const dObj=pre?pre.obj:(cur?cur.obj||'':''),dRoom=pre?pre.room:(cur?cur.room||'':'');
+  const dObj=pre?pre.obj:(cur?cur.obj||'':''),dRoom=pre?pre.room:(cur?cur.room||'':''),dLevel=pre?(pre.level||''):(cur?cur.level||'':'');
   const v=await modal({title:'Новая поверхность',text:'Выберите, что сняли, и укажите объект и комнату, чтобы потом быстро найти снимок.',fields:[
-    {key:'kind',label:'Что снято',type:'select',options:Object.entries(KINDS).map(([k,t])=>[k,t.name]),value:cur&&cur.kind?cur.kind:'wall'},
+    {key:'kind',label:'Что снято',type:'select',options:Object.entries(KINDS).map(([k,t])=>[k,t.opt||t.name]),value:cur&&cur.kind?cur.kind:'wall'},
     {key:'obj',label:'Объект',value:dObj,max:80,placeholder:'Например, квартира на Ленина, 5',suggest:objNames()},
+    {key:'level',label:'Этаж или уровень (необязательно)',value:dLevel,max:40,placeholder:'Например, 1 этаж',suggest:levelNames(dObj)},
     {key:'room',label:'Комната',value:dRoom,max:60,placeholder:'Например, кухня',suggest:roomNames(dObj)},
-    {key:'name',label:'Название (необязательно)',value:'',max:60,placeholder:'Если пусто, будет «'+defaultName(cur&&cur.kind||'wall',dObj,dRoom)+'»'},
+    {key:'name',label:'Название (необязательно)',value:'',max:60,placeholder:'Если пусто, будет «'+defaultName(cur&&cur.kind||'wall',dObj,dRoom,dLevel)+'»'},
     {key:'date',label:'Дата съёмки',type:'date',value:todayLocal()}
   ],ok:'Создать'});
   if(!v){toast('Снимок не сохранён');return;}
-  const p={id:uid(),name:v.name.trim()||defaultName(v.kind,v.obj.trim(),v.room.trim()),kind:v.kind,obj:v.obj.trim(),room:v.room.trim(),date:v.date||todayLocal(),scaleCm:0,img:r.img,w:r.w,h:r.h,routes:[],anchors:[],fin:null,updated:Date.now()};
+  const p={id:uid(),name:v.name.trim()||defaultName(v.kind,v.obj.trim(),v.room.trim(),v.level.trim()),kind:v.kind,obj:v.obj.trim(),room:v.room.trim(),level:v.level.trim(),date:v.date||todayLocal(),scaleCm:0,img:r.img,w:r.w,h:r.h,routes:[],anchors:[],fin:null,updated:Date.now()};
   S.projects.push(p);setCurrent(p);save();switchTab('draw');
-  toast('Отметьте опорные точки (угол, розетка), затем трассы.',4500);
+  toast(isExt(p)?'Наружная поверхность. Отметьте опорные точки (углы, окна, крепёж). Снимайте строго напротив и с одного места: так наложение точнее.':'Отметьте опорные точки (угол, розетка), затем трассы.',isExt(p)?8000:4500);
 }
 async function askScale(){
   if(RO()){toast('Масштаб в этом файле не задан.',3500);return false;}
@@ -1449,9 +1482,11 @@ async function askScale(){
     await modal({title:'Нужны две опорные точки',text:'Масштаб задаётся по расстоянию между опорами A и B. Отметьте их инструментом «Опора» и измерьте рулеткой расстояние между этими точками на стене.',ok:'Понятно',cancel:null});
     return false;
   }
-  const v=await modal({title:'Масштаб',text:'Измерьте рулеткой по прямой расстояние на стене между опорами A'+(p.anchors[0].name?' («'+p.anchors[0].name+'»)':'')+' и B'+(p.anchors[1].name?' («'+p.anchors[1].name+'»)':'')+' и введите в сантиметрах. Можно пропустить и задать позже во вкладке «Данные». Точность выше, если снимок сделан прямо перед стеной.',fields:[{key:'cm',label:'Расстояние A–B, см',value:p.scaleCm?String(p.scaleCm):'',inputmode:'decimal',max:10}],ok:'Сохранить',cancel:'Позже'});
+  const v=await modal({title:'Масштаб',text:'Измерьте рулеткой по прямой расстояние на стене между опорами A'+(p.anchors[0].name?' («'+p.anchors[0].name+'»)':'')+' и B'+(p.anchors[1].name?' («'+p.anchors[1].name+'»)':'')+' и введите в сантиметрах. Для большой стены или фасада можно в метрах, например «12,5 м». Можно пропустить и задать позже во вкладке «Данные». Точность выше, если снимок сделан прямо перед стеной.',fields:[{key:'cm',label:'Расстояние A–B (см, или м: 12,5 м)',value:p.scaleCm?String(p.scaleCm):'',inputmode:'text',max:14}],ok:'Сохранить',cancel:'Позже'});
   if(!v) return false;
-  const n=parseFloat(String(v.cm).replace(',','.'));
+  const raw=String(v.cm).trim().toLowerCase().replace(',','.');
+  const inM=/\d\s*(м|m)\s*$/.test(raw);
+  const n=parseFloat(raw)*(inM?100:1);
   if(!(n>0&&n<100000)){toast('Введите число больше нуля');return false;}
   p.scaleCm=n;save();renderEditor();renderData();return true;
 }
@@ -1459,8 +1494,8 @@ const fileImg=$('#fileImg');
 const fileCam=$('#fileCam');
 fileCam.addEventListener('change',()=>{const f=fileCam.files[0];fileCam.value='';addDrawing(f);});
 function addWallMenu(preset){
-  S.partBase=null;S.preset=preset?{obj:preset.obj,room:preset.room,t:Date.now()}:null;
-  modal({title:'Новая поверхность',text:'Сфотографируйте открытую стену, пол или потолок либо загрузите готовый чертёж.',ok:'Снять',extra:[{label:'Выбрать файл',action:()=>pickFile(false)}],cancel:'Отмена'}).then(v=>{if(v===true) capOpen();});
+  S.partBase=null;S.preset=preset?{obj:preset.obj,room:preset.room,level:preset.level||'',t:Date.now()}:null;
+  modal({title:'Новая поверхность',text:'Сфотографируйте открытую стену, пол, потолок, фасад или террасу либо загрузите готовый чертёж.',ok:'Снять',extra:[{label:'Выбрать файл',action:()=>pickFile(false)}],cancel:'Отмена'}).then(v=>{if(v===true) capOpen();});
 }
 $('#btnAdd').addEventListener('click',()=>addWallMenu());
 $('#btnShoot').addEventListener('click',()=>{S.partBase=null;capOpen();});
@@ -1472,7 +1507,7 @@ $('#projBtn').addEventListener('click',()=>openBrowser());
 function renderHeader(){
   const b=$('#projBtn'),p=S.cur;b.replaceChildren();
   if(!p) b.append(el('b',null,'Нет стен ▾'),el('span',null,'Нажмите, чтобы добавить'));
-  else b.append(el('b',null,(p.viewOnly?'👁 ':'')+p.name+' ▾'),el('span',null,(isLinked(p)?'✓ привязано · ':'')+([p.obj,p.room,p.kind&&p.kind!=='wall'?kindOf(p).name:''].filter(Boolean).join(' › ')||'Без объекта и комнаты')));
+  else b.append(el('b',null,(vo(p)?'👁 ':'')+p.name+' ▾'),el('span',null,(isLinked(p)?'✓ привязано · ':'')+([p.obj,p.level,p.room,p.kind&&p.kind!=='wall'?kindOf(p).name:''].filter(Boolean).join(' › ')||'Без объекта и комнаты')));
   if(!$('#browser').hidden) renderBrowser();
 }
 
@@ -1484,14 +1519,14 @@ function download(name,text){
 }
 function scopeOptions(p){
   const sameObj=p.obj?S.projects.filter(x=>(x.obj||'')===p.obj):[p];
-  const sameRoom=p.room?S.projects.filter(x=>(x.obj||'')===(p.obj||'')&&x.room===p.room):[p];
+  const sameRm=p.room?S.projects.filter(x=>sameRoom(x,p)):[p];
   const sameGrp=p.group?S.projects.filter(x=>x.group===p.group):[p];
   const opts=[['one','Только «'+p.name+'»']];
   if(sameGrp.length>1) opts.push(['grp','Эта стена со всеми фото монтажа ('+sameGrp.length+')']);
-  if(p.room&&sameRoom.length>1) opts.push(['room','Все стены комнаты «'+p.room+'» ('+sameRoom.length+')']);
+  if(p.room&&sameRm.length>1) opts.push(['room','Все стены комнаты «'+roomTitle(p)+'» ('+sameRm.length+')']);
   if(p.obj&&sameObj.length>1) opts.push(['obj','Весь объект «'+p.obj+'» ('+sameObj.length+')']);
   if(S.projects.length>1&&S.projects.length>sameObj.length) opts.push(['all','Все стены ('+S.projects.length+')']);
-  return {opts,sameRoom,sameObj,sameGrp};
+  return {opts,sameRoom:sameRm,sameObj,sameGrp};
 }
 async function fileDone(blob,name,mime,title,text){
   const file=new File([blob],name,{type:mime});
@@ -1525,7 +1560,7 @@ async function exportDialog(kind){
     try{out=Object.assign({format:'sloy-za-sloem',v:1,enc:true},await encryptText(JSON.stringify(payload),v.pw));}
     catch(e){toast('Не удалось зашифровать файл');return;}
   }
-  const safe=slug(src.length>1?(v.scope==='room'?p.room:(v.scope==='obj'?p.obj:'obekt')):p.name)||'chertezh';
+  const safe=slug(src.length>1?(v.scope==='room'?roomTitle(p):(v.scope==='obj'?p.obj:'obekt')):p.name)||'chertezh';
   const blob=new Blob([JSON.stringify(out)],{type:'application/json'});
   await fileDone(blob,'sloy-'+(view?'prosmotr-':'')+safe+'-'+new Date().toISOString().slice(0,10)+'.json','application/json',
     view?'Файл для просмотра готов':'Копия готова',
@@ -1591,13 +1626,13 @@ async function delAnchor(a){
   save();renderEditor();renderData();
 }
 const H={undo:[],redo:[],base:new Map(),busy:false,last:0};
-function histBase(p){if(p&&!p.viewOnly&&!H.base.has(p.id)) H.base.set(p.id,cloneKeep(p));}
+function histBase(p){if(p&&!vo(p)&&!H.base.has(p.id)) H.base.set(p.id,cloneKeep(p));}
 function histPush(e){
   H.undo.push(e);if(H.undo.length>60) H.undo.shift();H.redo=[];H.last=Date.now();histUI();
   if(/^(Удал|Убран|Обрезан|Заменён|Перенос)/.test(e.label)) toast(e.label,5500,{label:'Отменить',fn:histUndo});
 }
 function histCommit(){
-  const p=S.cur;if(!p||H.busy||p.viewOnly) return;
+  const p=S.cur;if(!p||H.busy||vo(p)) return;
   const prev=H.base.get(p.id),cur=cloneKeep(p);
   if(!prev){H.base.set(p.id,cur);return;}
   if(histSig(prev)===histSig(cur)) return;
@@ -1671,7 +1706,7 @@ function histUI(){
   const tu=H.undo[H.undo.length-1],tr=H.redo[H.redo.length-1];
   u.disabled=!tu;u.title=u.ariaLabel=tu?'Отменить: '+tu.label:'Отменить';
   r.disabled=!tr;r.title=r.ariaLabel=tr?'Повторить: '+tr.label:'Повторить';
-  if(S.dataSec==='project'&&S.cur&&!S.cur.viewOnly) renderData();
+  if(S.dataSec==='project'&&S.cur&&!vo(S.cur)) renderData();
 }
 $('#undoBtn').addEventListener('click',histUndo);
 $('#redoBtn').addEventListener('click',histRedo);
@@ -1721,8 +1756,9 @@ function renderData(){
       el('button',{onclick:()=>fileBak.click()},'Открыть присланный файл')));
     body.append(brandCard());body.append(storageCard());return;
   }
-  if(p.viewOnly){renderDataView(p,body);return;}
+  if(vo(p)){renderDataView(p,body);return;}
   body.append(secBar());
+  if((p.cnotes||[]).length) body.append(notesCard(p,false));
   if(S.dataSec==='layer') dataLayer(p,body); else dataProject(p,body);
 }
 function dataProject(p,body){
@@ -1733,23 +1769,27 @@ function dataProject(p,body){
   const objInp=el('input',{type:'text',maxlength:'80',placeholder:'Объект',list:'dlObj'});objInp.value=p.obj||'';
   objInp.addEventListener('change',()=>{p.obj=objInp.value.trim().slice(0,80);save();renderHeader();});
   roomInp.setAttribute('list','dlRoom');
+  const lvInp=el('input',{type:'text',maxlength:'40',placeholder:'Например, 1 этаж',list:'dlLv'});lvInp.value=p.level||'';
+  lvInp.addEventListener('change',()=>{p.level=lvInp.value.trim().slice(0,40);save();renderHeader();renderData();});
   const dateInp=el('input',{type:'date'});dateInp.value=p.date||'';
   dateInp.addEventListener('change',()=>{p.date=dateInp.value;save();});
-  const kindSel=el('select',null,...Object.entries(KINDS).map(([k,t])=>el('option',{value:k},t.name)));kindSel.value=p.kind||'wall';
+  const kindSel=el('select',null,...Object.entries(KINDS).map(([k,t])=>el('option',{value:k},t.opt||t.name)));kindSel.value=p.kind||'wall';
   kindSel.addEventListener('change',()=>{p.kind=kindSel.value;save();renderHeader();renderData();});
   body.append(el('div',{class:'card'},el('h2',null,'Поверхность: '+kindOf(p).name.toLowerCase()),
     el('label',{class:'mut'},'Что это'),kindSel,
     el('label',{class:'mut'},'Название'),nameInp,
     el('label',{class:'mut'},'Объект'),objInp,
+    el('label',{class:'mut'},'Этаж или уровень'),lvInp,
     el('label',{class:'mut'},'Комната'),roomInp,
+    el('datalist',{id:'dlLv'},...levelNames(p.obj||'').map(v=>el('option',{value:v}))),
     el('datalist',{id:'dlObj'},...objNames().map(v=>el('option',{value:v}))),
     el('datalist',{id:'dlRoom'},...roomNames(p.obj||'').map(v=>el('option',{value:v}))),
     el('label',{class:'mut'},'Дата съёмки монтажа'),dateInp));
   body.append(el('div',{class:'card'},el('h2',null,'Помещение'),
-    el('div',{class:'mut'},(p.room||'Без комнаты')+': '+roomCounts(S.projects.filter(x=>(x.obj||'')===(p.obj||'')&&(x.room||'')===(p.room||'')))),
+    el('div',{class:'mut'},(roomTitle(p)||'Без комнаты')+': '+roomCounts(S.projects.filter(x=>sameRoom(x,p)))),
     el('div',{class:'row'},
       el('button',{onclick:openBrowser},'Каталог'),
-      el('button',{onclick:()=>openPassport(p.obj||'',p.room||'')},'Паспорт'),
+      el('button',{onclick:()=>openPassport(p.obj||'',p.room||'',p.level||'')},'Паспорт'),
       el('button',{onclick:()=>openStickers(p.obj||'')},'Наклейки'))));
   body.append(reportCard(p),brandCard(),histCard());
   body.append(el('div',{class:'card'},el('h2',null,'Копия и удаление'),
@@ -1765,6 +1805,8 @@ function helpCard(){
   d.append(el('ol',null,
     el('li',null,el('b',null,'Монтаж. '),'Снимите открытую стену, на вкладке «Чертёж» выберите «Трасса» и обведите кабель или трубу. «Опора» ставит опорные точки: углы, розетки, любые заметные места.'),
     el('li',null,el('b',null,'Отделка. '),'После ремонта снимите ту же стену (слой «Отделка») и коснитесь тех же точек. Слой «Наложение» покажет сети поверх готовой стены.'),
+    el('li',null,el('b',null,'Снаружи. '),'Фасад, терраса, кровля и участок выбираются в окне «Новая поверхность». Работает так же: снимок до отделки (утепление, штукатурка, плитка) и после. Снимайте строго напротив, с одного места и расстояния. Для длинных фасадов делайте несколько снимков по частям.'),
+    el('li',null,el('b',null,'Структура. '),'Объект → этаж (по желанию) → помещение → стены, полы и потолки. Туалеты на первом и втором этаже — разные помещения. В каталоге кнопки «+ Объект» и «+ Помещение» создают их заранее, а «+» в помещении добавляет поверхность.'),
     el('li',null,el('b',null,'Паспорт. '),'Кнопка «Паспорт» собирает PDF по помещениям: его можно распечатать или отправить.')),
     el('div',{class:'mut'},'Если ошиблись:'),
     el('ul',null,
@@ -1782,7 +1824,7 @@ function roughCard(p){
     el('div',{class:'mut'},p.w+' × '+p.h+' пикселей'));
 }
 function lenBlock(p,scope,box){
-  const list=scope==='obj'?S.projects.filter(x=>(x.obj||'')===(p.obj||'')):scope==='room'?S.projects.filter(x=>(x.obj||'')===(p.obj||'')&&(x.room||'')===(p.room||'')):[p];
+  const list=scope==='obj'?S.projects.filter(x=>(x.obj||'')===(p.obj||'')):scope==='room'?S.projects.filter(x=>sameRoom(x,p)):[p];
   const R=lenSummary(list.map(x=>({name:x.name,k:pxPerCm(x),routes:x.routes})));
   box.replaceChildren();
   if(!R.items.length){
@@ -1880,7 +1922,7 @@ function partsCard(p){
   return c;
 }
 function storageCard(){
-  return el('div',{style:'display:contents'},offlineCard(),
+  return el('div',{style:'display:contents'},roleCard(),offlineCard(),
     el('div',{class:'card'},el('h2',null,'Где хранятся данные'),
       el('div',{class:'mut'},DB.ok
         ?'Чертежи и трассы лежат в памяти браузера на этом телефоне. Страница не отправляет их в сеть. Браузер может очистить память, если долго не открывать сайт, поэтому время от времени делайте копию в файл.'
@@ -2307,13 +2349,13 @@ async function coverPage(D,list){
     put(D,'Всего: '+list.reduce((n,p)=>n+p.routes.length,0)+' '+plural(list.reduce((n,p)=>n+p.routes.length,0))+', '+fmtLen(totCm),{size:28,bold:true});D.y+=4;
   }
   const roomsM=new Map();
-  for(const p of list){const key=(p.obj||'')+'\u0001'+(p.room||'');const o=roomsM.get(key)||{obj:p.obj||'',room:p.room||'',n:0,cm:0,has:false};o.n+=p.routes.length;const v=sl(p);if(v!==null){o.cm+=v;o.has=true;}roomsM.set(key,o);}
+  for(const p of list){const key=(p.obj||'')+'\u0001'+(p.level||'')+'\u0001'+(p.room||'');const o=roomsM.get(key)||{obj:p.obj||'',level:p.level||'',room:p.room||'',n:0,cm:0,has:false};o.n+=p.routes.length;const v=sl(p);if(v!==null){o.cm+=v;o.has=true;}roomsM.set(key,o);}
   if(roomsM.size>1&&totHas){
     D.y+=8;await ensure(D,90);
     put(D,'Длины по помещениям',{size:28,bold:true});D.y+=4;
     for(const o of roomsM.values()){
       await ensure(D,40);
-      put(D,(o.room||'Без комнаты')+(D.meta.obj===o.obj||!o.obj?'':' · '+o.obj)+' — '+o.n+' '+plural(o.n)+(o.has?', '+fmtLen(o.cm):', масштаб не задан'),{size:24});D.y+=2;
+      put(D,(cleanText(roomTitle(o))||'Без комнаты')+(D.meta.obj===o.obj||!o.obj?'':' · '+o.obj)+' — '+o.n+' '+plural(o.n)+(o.has?', '+fmtLen(o.cm):', масштаб не задан'),{size:24});D.y+=2;
     }
   }
   if(noScale) put(D,'Длины посчитаны только для стен с заданным масштабом.',{size:22,color:'#667085'});
@@ -2389,7 +2431,7 @@ async function routeTable(D,p,title){
   }
 }
 function wallLabel(D,p,sep){const c=D.codes&&D.codes.get(p);return c?c.label:kindOf(p).name;}
-function wallSub(D,p){return [D.meta.multiObj?cleanText(p.obj):'',cleanText(p.room),cleanText(p.name)].filter(Boolean).join(' · ');}
+function wallSub(D,p){return [D.meta.multiObj?cleanText(p.obj):'',cleanText(roomTitle(p)),cleanText(p.name)].filter(Boolean).join(' · ');}
 async function compositeParts(D,p,list){
   const ms=p.group?list.filter(x=>x.group===p.group&&x.fin&&x.fin.w===p.fin.w&&x.fin.h===p.fin.h&&alignInfo(x)):(alignInfo(p)?[p]:[]);
   const out=[];for(const x of ms) out.push({p:x,A:alignInfo(x),im:await loadImg(x.img)});return out;
@@ -2444,10 +2486,10 @@ async function finishPage(D,p,title,list){
   D.y=y0+dh+30;
   put(D,A?'Показан снимок после отделки, поверх него снимок монтажа (полупрозрачно) и трассы. Номера совпадают с таблицей на предыдущей странице. '+alignText(p,A):'Совмещение со снимком монтажа не выполнено: на снимке отделки отмечено меньше двух опорных точек, поэтому трассы не показаны.',{size:24,color:'#344054'});
 }
-const kindRank=p=>({wall:0,floor:1,ceiling:2}[(p&&p.kind)||'wall']||0);
+const kindRank=p=>({wall:0,floor:1,ceiling:2,facade:3,terrace:4,roof:5,ground:6}[(p&&p.kind)||'wall']||0);
 async function buildReport(list,meta){return (await buildReportFull(list,meta)).blob;}
 async function buildReportFull(list,meta){
-  list=list.slice().sort((a,b)=>(a.obj||'').localeCompare(b.obj||'','ru')||(a.room||'').localeCompare(b.room||'','ru')||kindRank(a)-kindRank(b)||(a.date||'').localeCompare(b.date||'')||(a.name||'').localeCompare(b.name||'','ru'));
+  list=list.slice().sort((a,b)=>(a.obj||'').localeCompare(b.obj||'','ru')||lvCmp(a.level,b.level)||(a.room||'').localeCompare(b.room||'','ru')||kindRank(a)-kindRank(b)||(a.date||'').localeCompare(b.date||'')||(a.name||'').localeCompare(b.name||'','ru'));
   meta.multiObj=new Set(list.map(x=>x.obj||'')).size>1;
   const D=newDoc(meta);
   D.codes=wallCodes(list);D.finDone=new Set();
@@ -2463,7 +2505,7 @@ function reportCard(p){
   return el('div',{class:'card'},el('h2',null,'Паспорт скрытых коммуникаций'),
     el('div',{class:'mut'},'PDF для заказчика: фото до закрытия стен, трассы с номерами, глубина, длины, опорные точки и снимок после отделки. Создаётся на телефоне и никуда не отправляется.'),
     el('button',{class:'primary',onclick:()=>reportDialog()},'Сформировать PDF'),
-    el('button',{onclick:()=>openPassport(p.obj||'',p.room||'')},'Паспорт по помещениям'));
+    el('button',{onclick:()=>openPassport(p.obj||'',p.room||'',p.level||'')},'Паспорт по помещениям'));
 }
 async function reportDialog(){
   const p=S.cur;if(!p) return;
@@ -2493,16 +2535,16 @@ async function reportDone(blob,name){
 
 /* ---------- Экран «Паспорт»: по помещениям, печать, отправка, сохранение ---------- */
 const PS={mode:'pass',copies:1,per:8,obj:'',off:new Set(),pages:[],urls:[],blob:null,name:'',token:0,timer:null,addr:'',client:''};
-const psKey=p=>(p.obj||'')+'\u0001'+(p.room||'');
+const psKey=p=>(p.obj||'')+'\u0001'+(p.level||'')+'\u0001'+(p.room||'');
 const psScope=()=>S.projects.filter(p=>PS.obj==='\u0002'||(p.obj||'')===PS.obj);
 const psList=()=>psScope().filter(p=>!PS.off.has(psKey(p)));
 function psFree(){PS.urls.forEach(u=>URL.revokeObjectURL(u));PS.urls=[];PS.pages=[];PS.blob=null;}
-function openPassport(obj,room){
+function openPassport(obj,room,level){
   if(!S.projects.length){toast('Сначала добавьте хотя бы одну поверхность');return;}
   PS.mode='pass';$('#psHead h2').textContent='Паспорт скрытых коммуникаций';
   PS.obj=obj!==undefined?obj:(S.cur?S.cur.obj||'':groupWalls()[0].obj);
   PS.off=new Set();
-  if(room!==undefined) for(const p of psScope()) if((p.room||'')!==room) PS.off.add(psKey(p));
+  if(room!==undefined) for(const p of psScope()) if((p.room||'')!==room||(level!==undefined&&(p.level||'')!==level)) PS.off.add(psKey(p));
   const sv=loadObj();PS.addr=(PS.obj&&PS.obj!=='\u0002'?PS.obj:sv.obj)||'';PS.client=sv.client;
   $('#passport').hidden=false;
   psRender();psBuild();
@@ -2522,11 +2564,11 @@ function psRender(){
   }
   ctl.append(el('div',{class:'mut'},'Отметьте помещения, которые войдут в паспорт.'));
   const rooms=new Map();
-  for(const p of psScope()){const k=psKey(p);if(!rooms.has(k)) rooms.set(k,{room:p.room||'',obj:p.obj||'',list:[]});rooms.get(k).list.push(p);}
+  for(const p of psScope()){const k=psKey(p);if(!rooms.has(k)) rooms.set(k,{room:p.room||'',level:p.level||'',obj:p.obj||'',list:[]});rooms.get(k).list.push(p);}
   for(const [k,r] of rooms){
     const cb=el('input',{type:'checkbox'});cb.checked=!PS.off.has(k);
     cb.addEventListener('change',()=>{if(cb.checked) PS.off.delete(k);else PS.off.add(k);psSchedule();});
-    ctl.append(el('label',{class:'psRoom'},cb,el('span',null,(PS.obj==='\u0002'&&r.obj?r.obj+' · ':'')+(r.room||'Без комнаты')+' — '+roomCounts(r.list))));
+    ctl.append(el('label',{class:'psRoom'},cb,el('span',null,(PS.obj==='\u0002'&&r.obj?r.obj+' · ':'')+(roomTitle(r)||'Без комнаты')+' — '+roomCounts(r.list))));
   }
   const ai=el('input',{type:'text',maxlength:'120',placeholder:'Например, ул. Ленина, 5, кв. 12'});ai.value=PS.addr;
   const ci=el('input',{type:'text',maxlength:'80'});ci.value=PS.client;
@@ -2676,17 +2718,17 @@ const QR=(function(){
 })();
 
 /* ---------- Наклейки с QR для комнат ---------- */
-function roomHash(obj,room){
-  let h=0x811c9dc5;const t=(obj||'').trim().toLowerCase()+'\u0001'+(room||'').trim().toLowerCase();
+function roomHash(obj,room,level){
+  let h=0x811c9dc5;const t=(obj||'').trim().toLowerCase()+'\u0001'+(level?(level||'').trim().toLowerCase()+'\u0001':'')+(room||'').trim().toLowerCase();
   for(const b of new TextEncoder().encode(t)){h^=b;h=Math.imul(h,0x01000193)>>>0;}
   return h.toString(16).padStart(8,'0');
 }
 function stBase(){const v=(LS.get('sloy-base')||'').trim();if(v) return v.split('#')[0];return location.protocol==='file:'?'':location.href.split('#')[0];}
 function openByKey(k){
-  const hit=S.projects.filter(p=>roomHash(p.obj,p.room)===k).sort((a,b)=>kindRank(a)-kindRank(b)||(a.date||'').localeCompare(b.date||''));
+  const hit=S.projects.filter(p=>roomHash(p.obj,p.room,p.level)===k).sort((a,b)=>kindRank(a)-kindRank(b)||(a.date||'').localeCompare(b.date||''));
   if(!hit.length){toast('На этом телефоне нет комнаты с этой наклейки. Откройте приложение там, где хранятся данные.',6000);return;}
   setCurrent(hit[0]);switchTab('draw');
-  toast('Комната «'+(hit[0].room||'без названия')+'»: '+roomCounts(hit)+'. Другие поверхности — кнопка вверху.',6000);
+  toast('Комната «'+(roomTitle(hit[0])||'без названия')+'»: '+roomCounts(hit)+'. Другие поверхности — кнопка вверху.',6000);
 }
 function handleHash(){
   const m=/^#k=([0-9a-f]{8})$/.exec(location.hash);if(!m) return;
@@ -2696,7 +2738,7 @@ function handleHash(){
 window.addEventListener('hashchange',handleHash);
 function stRooms(){
   const m=new Map();
-  for(const p of psScope()){const k=psKey(p);if(PS.off.has(k)||m.has(k)) continue;m.set(k,{obj:p.obj||'',room:p.room||''});}
+  for(const p of psScope()){const k=psKey(p);if(PS.off.has(k)||m.has(k)) continue;m.set(k,{obj:p.obj||'',room:p.room||'',level:p.level||''});}
   return [...m.values()];
 }
 function openStickers(obj){
@@ -2715,11 +2757,11 @@ function stRender(){
     ctl.append(el('label',{class:'mut'},'Объект'),sel);
   }
   const rooms=new Map();
-  for(const p of psScope()){const k=psKey(p);if(!rooms.has(k)) rooms.set(k,{room:p.room||'',obj:p.obj||'',list:[]});rooms.get(k).list.push(p);}
+  for(const p of psScope()){const k=psKey(p);if(!rooms.has(k)) rooms.set(k,{room:p.room||'',level:p.level||'',obj:p.obj||'',list:[]});rooms.get(k).list.push(p);}
   for(const [k,r] of rooms){
     const cb=el('input',{type:'checkbox'});cb.checked=!PS.off.has(k);
     cb.addEventListener('change',()=>{if(cb.checked) PS.off.delete(k);else PS.off.add(k);psSchedule();});
-    ctl.append(el('label',{class:'psRoom'},cb,el('span',null,(PS.obj==='\u0002'&&r.obj?r.obj+' · ':'')+(r.room||'Без комнаты')+' — '+roomCounts(r.list))));
+    ctl.append(el('label',{class:'psRoom'},cb,el('span',null,(PS.obj==='\u0002'&&r.obj?r.obj+' · ':'')+(roomTitle(r)||'Без комнаты')+' — '+roomCounts(r.list))));
   }
   const cs=el('select',null,...[1,2,3].map(n=>el('option',{value:String(n)},String(n)))),ps=el('select',null,...[[6,'6 (крупные)'],[8,'8'],[12,'12 (мелкие)']].map(([n,t])=>el('option',{value:String(n)},t)));
   cs.value=String(PS.copies);ps.value=String(PS.per);
@@ -2749,7 +2791,7 @@ async function stBuild(){
       x.fillStyle='#fff';x.fillRect(0,0,PW,PH);
       items.slice(off,off+per).forEach((it,i)=>{
         const x0=mg+(i%cols)*cw,y0=mg+Math.floor(i/cols)*ch;
-        drawSticker(x,x0,y0,cw,ch,it,base+'#k='+roomHash(it.obj,it.room),brand,PS.obj==='\u0002');
+        drawSticker(x,x0,y0,cw,ch,it,base+'#k='+roomHash(it.obj,it.room,it.level),brand,PS.obj==='\u0002');
       });
       const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.93));
       pages.push({jpeg:new Uint8Array(await blob.arrayBuffer()),w:PW,h:PH});c.width=0;c.height=0;
@@ -2770,7 +2812,7 @@ function drawSticker(x,x0,y0,w,h,it,url,brand,showObj){
   let ty=qy+qs+Math.round(h*0.045);
   x.textAlign='center';x.textBaseline='alphabetic';x.fillStyle='#101828';
   const big=Math.round(Math.min(46,h*0.085));x.font=fontOf(big,true);
-  x.fillText(fitText(x,cleanText(it.room)||'Без комнаты',w-2*pad),x0+w/2,ty+big*0.8);ty+=big*1.15;
+  x.fillText(fitText(x,cleanText(roomTitle(it))||'Без комнаты',w-2*pad),x0+w/2,ty+big*0.8);ty+=big*1.15;
   x.fillStyle='#475467';
   if(showObj||it.obj){const sm=Math.round(big*0.5);x.font=fontOf(sm,false);if(it.obj){x.fillText(fitText(x,cleanText(it.obj),w-2*pad),x0+w/2,ty+sm*0.8);ty+=sm*1.3;}}
   const sm2=Math.round(big*0.45);x.font=fontOf(sm2,false);x.fillStyle='#667085';
@@ -2779,8 +2821,83 @@ function drawSticker(x,x0,y0,w,h,it,url,brand,showObj){
   x.textAlign='left';
 }
 
+/* ---------- Роли: монтажник / заказчик ---------- */
+function applyRole(){
+  document.body.classList.toggle('client',ROLE==='client');
+  const b=$('#roleBadge');if(b) b.textContent=ROLE==='client'?'· заказчик':'';
+  try{localStorage.setItem('sloy-role',ROLE);}catch(e){}
+}
+const pinHash=x=>{let h=5381;const t='sloy|'+x;for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(i))>>>0;return h.toString(36);};
+async function setRole(r){
+  if(r===ROLE) return;
+  if(r==='crew'){
+    const h=LS.get('sloy-pin')||'';
+    if(h){
+      const v=await modal({title:'PIN монтажника',text:'Введите PIN, чтобы вернуться в режим монтажника.',fields:[{key:'pin',label:'PIN',value:'',inputmode:'numeric',max:12}],ok:'Войти',cancel:'Отмена'});
+      if(!v) return;
+      if(pinHash(String(v.pin).trim())!==h){toast('Неверный PIN',3000);return;}
+    }
+  }
+  ROLE=r;applyRole();
+  if(r==='client'){S.tool='pan';if(S.draft)S.draft=[];}
+  renderAll();
+  toast(r==='client'?'Режим заказчика: можно смотреть наложение, скачивать паспорт и добавлять заметки.':'Режим монтажника',4500);
+}
+async function setPin(){
+  const v=await modal({title:'PIN монтажника',text:'Нужен, чтобы заказчик случайно не вышел из своего режима. Это не защита данных: любой может очистить данные сайта в браузере. Пустое поле убирает PIN.',fields:[{key:'pin',label:'Новый PIN (цифры)',value:'',inputmode:'numeric',max:12}],ok:'Сохранить',cancel:'Отмена'});
+  if(!v) return;
+  const x=String(v.pin).trim();
+  if(x){LS.set('sloy-pin',pinHash(x));toast('PIN задан',2500);}else{LS.set('sloy-pin','');toast('PIN убран',2500);}
+  renderData();
+}
+function roleCard(){
+  const c=el('div',{class:'card'},el('h2',null,'Режим работы'));
+  if(ROLE==='client'){
+    c.append(el('div',{class:'mut'},'Сейчас режим заказчика. Правка трасс и точек отключена. Доступны наложение, паспорт PDF и ваши заметки с фото.'),
+      el('button',{onclick:()=>setRole('crew')},'Войти как монтажник'));
+  }else{
+    c.append(el('div',{class:'mut'},'Монтажник: создаёт объекты, снимает, размечает трассы, считает длины и выпускает паспорт. Заказчик только смотрит, скачивает паспорт и добавляет свои заметки.'),
+      el('button',{onclick:()=>setRole('client')},'Передать заказчику (режим просмотра)'),
+      el('button',{onclick:setPin},LS.get('sloy-pin')?'Сменить или убрать PIN':'Задать PIN монтажника'));
+  }
+  return c;
+}
+function shrinkJpeg(file,max){
+  return new Promise((res,rej)=>{
+    const u=URL.createObjectURL(file),im=new Image();
+    im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height)),cv2=document.createElement('canvas');
+      cv2.width=Math.round(im.width*k);cv2.height=Math.round(im.height*k);cv2.getContext('2d').drawImage(im,0,0,cv2.width,cv2.height);
+      URL.revokeObjectURL(u);res(cv2.toDataURL('image/jpeg',0.72));};
+    im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('img'));};im.src=u;
+  });
+}
+function notesCard(p,canAdd){
+  const mine=ROLE==='client'||p.viewOnly;
+  const c=el('div',{class:'card'},el('h2',null,'Заметки заказчика ('+(p.cnotes||[]).length+')'));
+  if(!(p.cnotes||[]).length) c.append(el('div',{class:'mut'},canAdd&&mine?'Например: «здесь повесили шкаф». Заметки лежат только на этом телефоне и уйдут дальше, если отправить файл.':'Заметок нет.'));
+  (p.cnotes||[]).forEach(n=>{
+    const row=el('div',{class:'cnote'},el('div',{class:'mut'},fmtDate(n.date)||''),el('div',null,n.t));
+    if(n.img) row.append(el('img',{src:n.img,alt:'Фото заказчика'}));
+    if(canAdd&&mine) row.append(el('button',{class:'danger',onclick:()=>{p.cnotes=p.cnotes.filter(x=>x!==n);save();renderData();}},'Удалить заметку'));
+    c.append(row);
+  });
+  if(canAdd&&mine){
+    const ta=el('textarea',{rows:'3',maxlength:'600',placeholder:'Текст заметки',style:'width:100%'});
+    const fi=el('input',{type:'file',accept:'image/*',hidden:true});
+    let img='';
+    const pick=el('button',{onclick:()=>fi.click()},'Прикрепить фото');
+    fi.addEventListener('change',async()=>{const f=fi.files&&fi.files[0];if(!f) return;try{img=await shrinkJpeg(f,1000);pick.textContent='Фото прикреплено ✓';}catch(e){toast('Не удалось прочитать фото',3000);}});
+    c.append(ta,fi,pick,el('button',{class:'primary',onclick:()=>{
+      const t=ta.value.trim();if(!t&&!img){toast('Напишите текст или прикрепите фото',2500);return;}
+      if((p.cnotes||[]).length>=60){toast('Слишком много заметок',2500);return;}
+      (p.cnotes=p.cnotes||[]).push({id:uid(),t:t||'(фото)',date:new Date().toISOString().slice(0,10),img});
+      save();renderData();toast('Заметка добавлена',2000);}},'Добавить заметку'));
+  }
+  return c;
+}
+
 /* ---------- Режим просмотра ---------- */
-const RO=()=>!!(S.cur&&S.cur.viewOnly);
+const RO=()=>vo(S.cur);
 async function makeEditableCopy(){
   const p=S.cur;if(!p) return;
   const ok=await modal({title:'Создать редактируемую копию?',text:'Появится ваша копия стены, которую можно править. Исходный файл в режиме просмотра останется без изменений.',ok:'Создать'});
@@ -2792,8 +2909,8 @@ async function makeEditableCopy(){
 function renderDataView(p,body){
   const k=pxPerCm(p);
   body.append(el('div',{class:'card'},el('h2',null,kindOf(p).name),
-    el('div',{class:'mut'},'Режим просмотра: правка отключена. Чтобы вносить изменения, создайте редактируемую копию внизу.'),
-    el('div',null,el('b',null,(p.room?p.room+' — ':'')+p.name)),
+    el('div',{class:'mut'},'Режим просмотра: правка отключена.'+(ROLE==='client'?'':' Чтобы вносить изменения, создайте редактируемую копию внизу.')+''),
+    el('div',null,el('b',null,(roomTitle(p)?roomTitle(p)+' — ':'')+p.name)),
     el('div',{class:'mut'},'Съёмка при монтаже: '+(fmtDate(p.date)||'дата не указана')),
     el('div',{class:'mut'},k?'Масштаб: расстояние между A и B — '+fmtLen(p.scaleCm)+'.':'Масштаб не задан: длины и расстояния недоступны.')));
   body.append(locationCard(p));
@@ -2826,17 +2943,66 @@ function renderDataView(p,body){
   p.anchors.forEach((a,i)=>ac.append(el('div',{class:'item'},el('b',null,LETTERS[i]),el('div',{class:'grow mut'},a.name||'без названия'))));
   body.append(ac);
   body.append(reportCard(p));
+  body.append(notesCard(p,true));
   body.append(el('div',{class:'card'},el('h2',null,'Действия'),
-    el('button',{class:'primary',onclick:makeEditableCopy},'Создать редактируемую копию'),
+    el('button',{class:'primary crew',onclick:makeEditableCopy},'Создать редактируемую копию'),
     el('button',{onclick:()=>exportDialog('view')},'Отправить файл дальше'),
     el('button',{onclick:()=>fileBak.click()},'Открыть другой присланный файл'),
-    el('button',{class:'danger',onclick:delProject},'Удалить с этого телефона')));
+    el('button',{class:'danger crew',onclick:delProject},'Удалить с этого телефона')));
   body.append(storageCard());
 }
 
 /* ---------- Объекты, комнаты, стены ---------- */
-function objNames(){return [...new Set(S.projects.map(x=>x.obj||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));}
-function roomNames(obj){return [...new Set(S.projects.filter(x=>(x.obj||'')===(obj||'')).map(x=>x.room||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));}
+// Пустые объекты и комнаты, созданные заранее (до первой стены). Хранятся на этом телефоне.
+const STRUCT=(function(){
+  const d={objs:[],rooms:[]};
+  try{const j=JSON.parse(LS.get('sloy-struct')||'{}');
+    d.objs=(Array.isArray(j.objs)?j.objs:[]).map(x=>String(x).slice(0,80)).filter(Boolean);
+    d.rooms=(Array.isArray(j.rooms)?j.rooms:[]).map(x=>({obj:String((x&&x.obj)||'').slice(0,80),level:String((x&&x.level)||'').slice(0,40),room:String((x&&x.room)||'').slice(0,60)})).filter(x=>x.room);
+  }catch(e){}
+  return d;
+})();
+function structSave(){LS.set('sloy-struct',JSON.stringify(STRUCT));}
+function objNames(){return [...new Set(S.projects.map(x=>x.obj||'').concat(STRUCT.objs,STRUCT.rooms.map(x=>x.obj)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));}
+function levelNames(obj){
+  const have=[...new Set(S.projects.filter(x=>(x.obj||'')===(obj||'')).map(x=>x.level||'').concat(STRUCT.rooms.filter(x=>x.obj===(obj||'')).map(x=>x.level||'')).filter(Boolean))];
+  return have.concat(LEVEL_DEFAULTS.filter(x=>!have.includes(x))).sort(lvCmp);
+}
+function roomNames(obj){const have=roomNamesHave(obj);return have.concat(ROOM_EXT.filter(x=>!have.includes(x)));}
+function roomNamesHave(obj){return [...new Set(S.projects.filter(x=>(x.obj||'')===(obj||'')).map(x=>x.room||'').concat(STRUCT.rooms.filter(x=>x.obj===(obj||'')).map(x=>x.room)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));}
+async function newObject(){
+  const v=await modal({title:'Новый объект',text:'Объект — это квартира, дом или участок. Внутри создайте помещения, а в них добавляйте стены, полы и потолки.',fields:[{key:'name',label:'Название',value:'',max:80,suggest:[]}],ok:'Создать'});
+  if(!v) return;const n=v.name.trim();if(!n) return;
+  if(objNames().includes(n)){toast('Такой объект уже есть');BR.obj=n;BR.room='*';renderBrowser();return;}
+  STRUCT.objs.push(n);structSave();BR.obj=n;BR.room='*';renderBrowser();toast('Объект создан. Добавьте в него помещения.');
+}
+async function newRoom(){
+  const def=BR.obj!=='*'?BR.obj:(objNames().length===1?objNames()[0]:'');
+  const v=await modal({title:'Новое помещение',text:'Например: кухня, спальня, ванная. Этаж можно указать, если помещения с одним названием есть на разных этажах.',fields:[{key:'obj',label:'Объект',value:def,max:80,suggest:objNames()},{key:'level',label:'Этаж или уровень (необязательно)',value:'',max:40,suggest:levelNames(def)},{key:'room',label:'Название помещения',value:'',max:60,suggest:[]}],ok:'Создать'});
+  if(!v) return;const o=v.obj.trim(),r=v.room.trim(),lv=v.level.trim();if(!r) return;
+  if(S.projects.some(x=>sameRoom(x,{obj:o,level:lv,room:r}))||STRUCT.rooms.some(x=>sameRoom(x,{obj:o,level:lv,room:r}))){toast('Такое помещение уже есть');}
+  else{STRUCT.rooms.push({obj:o,level:lv,room:r});structSave();toast('Помещение создано. Нажмите «+», чтобы добавить стену, пол или потолок.',5000);}
+  BR.obj=o||'*';if(o&&!objNames().includes(o)) BR.obj='*';BR.room='*';renderBrowser();
+}
+function structDelRoom(obj,room,level){
+  level=level||'';
+  if(S.projects.some(x=>sameRoom(x,{obj,level,room}))){toast('В помещении есть поверхности: сначала перенесите или удалите их');return;}
+  const rm=STRUCT.rooms.filter(x=>sameRoom(x,{obj,level,room}));if(!rm.length) return;
+  STRUCT.rooms=STRUCT.rooms.filter(x=>!sameRoom(x,{obj,level,room}));structSave();renderBrowser();
+  toast('Помещение удалено',5000,{label:'Вернуть',fn:()=>{STRUCT.rooms.push(...rm);structSave();renderBrowser();}});
+}
+function structDelObj(obj){
+  if(S.projects.some(x=>(x.obj||'')===obj)){toast('В объекте есть поверхности: сначала перенесите или удалите их');return;}
+  const ob=STRUCT.objs.filter(x=>x===obj),rm=STRUCT.rooms.filter(x=>x.obj===obj);
+  STRUCT.objs=STRUCT.objs.filter(x=>x!==obj);STRUCT.rooms=STRUCT.rooms.filter(x=>x.obj!==obj);structSave();BR.obj='*';BR.room='*';renderBrowser();
+  toast('Объект удалён',5000,{label:'Вернуть',fn:()=>{STRUCT.objs.push(...ob);STRUCT.rooms.push(...rm);structSave();renderBrowser();}});
+}
+function structRename(obj,room,nn,level){
+  if(room==='\u0003') STRUCT.rooms.forEach(x=>{if(x.obj===obj&&(x.level||'')===(level||'')) x.level=nn;});
+  else if(room!==null) STRUCT.rooms.forEach(x=>{if(x.obj===obj&&(x.level||'')===(level||'')&&x.room===room) x.room=nn;});
+  else{STRUCT.objs=STRUCT.objs.map(x=>x===obj?nn:x);STRUCT.rooms.forEach(x=>{if(x.obj===obj) x.obj=nn;});}
+  structSave();
+}
 function wordWalls(n){const a=n%10,b=n%100;return a===1&&b!==11?'стена':(a>=2&&a<=4&&(b<12||b>14))?'стены':'стен';}
 function wallLine(p){
   const parts=[];
@@ -2845,23 +3011,31 @@ function wallLine(p){
   if(p.date) parts.push(fmtDate(p.date));
   parts.push(p.routes.length+' '+plural(p.routes.length));
   if(p.fin) parts.push(isLinked(p)?'✓ привязано':'есть отделка, не привязано');
-  if(p.viewOnly) parts.push('просмотр');
+  if(vo(p)) parts.push('просмотр');
   return parts.join(' · ');
 }
-function groupWalls(){
+function groupWalls(withEmpty){
   const byObj=new Map();
   for(const p of S.projects){
-    const o=p.obj||'',r=p.room||'';
+    const o=p.obj||'',r=lvKey(p.level,p.room);
     if(!byObj.has(o)) byObj.set(o,new Map());
     const rooms=byObj.get(o);
     if(!rooms.has(r)) rooms.set(r,[]);
     rooms.get(r).push(p);
   }
+  if(withEmpty){
+    for(const o of STRUCT.objs) if(!byObj.has(o)) byObj.set(o,new Map());
+    for(const x of STRUCT.rooms){
+      if(!byObj.has(x.obj)) byObj.set(x.obj,new Map());
+      const rooms=byObj.get(x.obj),kk=lvKey(x.level,x.room);if(!rooms.has(kk)) rooms.set(kk,[]);
+    }
+  }
   const cmp=(a,b)=>a===''?1:b===''?-1:a.localeCompare(b,'ru');
   return [...byObj.entries()].sort((x,y)=>cmp(x[0],y[0])).map(([o,rooms])=>({
     obj:o,
-    rooms:[...rooms.entries()].sort((x,y)=>cmp(x[0],y[0])).map(([r,list])=>({
-      room:r,
+    rooms:[...rooms.entries()].map(([k,list])=>{const i=k.indexOf('\u0001');return {k,level:k.slice(0,i),room:k.slice(i+1),list};})
+      .sort((x,y)=>lvCmp(x.level,y.level)||cmp(x.room,y.room)).map(({level,room,list})=>({
+      level,room,
       walls:list.slice().sort((a,b)=>kindRank(a)-kindRank(b)||(a.date||'').localeCompare(b.date||'')||(a.name||'').localeCompare(b.name||'','ru'))
     }))
   }));
@@ -2883,26 +3057,26 @@ function thumbFor(p,img){
   }).catch(()=>{});
 }
 function brMatch(p,o){
-  if(o.kind!==false&&BR.kind!=='all'&&(p.kind||'wall')!==BR.kind) return false;
+  if(o.kind!==false&&BR.kind!=='all'&&(BR.kind==='ext'?!isExt(p):(p.kind||'wall')!==BR.kind)) return false;
   if(BR.obj!=='*'&&(p.obj||'')!==BR.obj) return false;
-  if(o.room!==false&&BR.room!=='*'&&(p.room||'')!==BR.room) return false;
+  if(o.room!==false&&BR.room!=='*'&&lvKey(p.level,p.room)!==BR.room) return false;
   const q=BR.q.trim().toLowerCase();
-  if(q&&![p.name,p.room,p.obj,kindOf(p).name].join(' ').toLowerCase().includes(q)) return false;
+  if(q&&![p.name,p.room,p.level,p.obj,kindOf(p).name].join(' ').toLowerCase().includes(q)) return false;
   return true;
 }
 function pCard(p){
   const th=el('div',{class:'th'});const im=el('img',{alt:'',decoding:'async'});th.append(im);thumbFor(p,im);
   th.append(el('span',{class:'tk'},kindOf(p).name));
   if(p.fin) th.append(el('span',{class:'tl '+(isLinked(p)?'ok':'no')},isLinked(p)?'✓ привязано':'не привязано'));
-  const info=[p.date?fmtDate(p.date):'',p.routes.length+' '+plural(p.routes.length),p.group&&S.projects.filter(x=>x.group===p.group).length>1?'общая отделка':'',p.viewOnly?'просмотр':''].filter(Boolean).join(' · ');
+  const info=[p.date?fmtDate(p.date):'',p.routes.length+' '+plural(p.routes.length),p.group&&S.projects.filter(x=>x.group===p.group).length>1?'общая отделка':'',vo(p)?'просмотр':''].filter(Boolean).join(' · ');
   return el('div',{class:'pcard'},
-    el('button',{class:'wall'+(p===S.cur?' cur':''),onclick:()=>openWall(p)},th,el('b',null,(p.viewOnly?'👁 ':'')+p.name),el('small',null,info)),
+    el('button',{class:'wall'+(p===S.cur?' cur':''),onclick:()=>openWall(p)},th,el('b',null,(vo(p)?'👁 ':'')+p.name),el('small',null,info)),
     el('button',{class:'mv',onclick:()=>moveSurface(p)},'Перенести'));
 }
 function renderBrowser(){
   const body=$('#brBody');body.replaceChildren();
   const tools=$('#brTools'),rooms=$('#brRooms');
-  if(!S.projects.length){
+  if(!S.projects.length&&!STRUCT.objs.length&&!STRUCT.rooms.length){
     tools.hidden=true;rooms.hidden=true;
     body.append(el('div',{class:'brEmpty'},el('p',null,'Стен пока нет. Снимите первую стену или откройте файл, который прислала бригада.'),
       el('button',{class:'primary',onclick:()=>{closeBrowser();addWallMenu();}},'Добавить стену'),
@@ -2911,7 +3085,8 @@ function renderBrowser(){
   }
   tools.hidden=false;rooms.hidden=false;
   // объекты
-  const objs=[...new Set(S.projects.map(x=>x.obj||''))].sort((a,b)=>a===''?1:b===''?-1:a.localeCompare(b,'ru'));
+  const groups=groupWalls(true);
+  const objs=groups.map(g=>g.obj);
   if(BR.obj!=='*'&&!objs.includes(BR.obj)) BR.obj='*';
   const so=$('#brObj');so.replaceChildren(el('option',{value:'*'},'Все объекты'),...objs.map(o=>el('option',{value:o},o||'Без объекта')));
   so.value=BR.obj;so.hidden=objs.length<2;
@@ -2919,17 +3094,17 @@ function renderBrowser(){
   // виды
   const inObj=S.projects.filter(p=>BR.obj==='*'||(p.obj||'')===BR.obj);
   const kc=el('div',null);kc.style.display='contents';
-  const kinds=[['all','Все',inObj.length],['wall','Стены',inObj.filter(p=>(p.kind||'wall')==='wall').length],['floor','Полы',inObj.filter(p=>p.kind==='floor').length],['ceiling','Потолки',inObj.filter(p=>p.kind==='ceiling').length]];
+  const kinds=[['all','Все',inObj.length],['wall','Стены',inObj.filter(p=>(p.kind||'wall')==='wall').length],['floor','Полы',inObj.filter(p=>p.kind==='floor').length],['ceiling','Потолки',inObj.filter(p=>p.kind==='ceiling').length],['ext','Снаружи',inObj.filter(isExt).length]];
   $('#brKinds').replaceChildren(...kinds.filter(k=>k[0]==='all'||k[2]>0||BR.kind===k[0]).map(([k,n,c])=>el('button',{class:'fchip'+(BR.kind===k?' on':''),onclick:()=>{BR.kind=k;renderBrowser();}},n+' '+c)));
   // помещения
-  const rm=new Map();for(const p of inObj){const r=p.room||'';rm.set(r,(rm.get(r)||0)+1);}
+  const rm=new Map();for(const g of groups){if(BR.obj!=='*'&&g.obj!==BR.obj) continue;for(const r of g.rooms){const kk=lvKey(r.level,r.room);const o=rm.get(kk)||{level:r.level,room:r.room,n:0};o.n+=r.walls.length;rm.set(kk,o);}}
   if(BR.room!=='*'&&!rm.has(BR.room)) BR.room='*';
-  const rl=[...rm.entries()].sort((a,b)=>a[0]===''?1:b[0]===''?-1:a[0].localeCompare(b[0],'ru'));
+  const rl=[...rm.entries()].sort((a,b)=>lvCmp(a[1].level,b[1].level)||(a[1].room===''?1:b[1].room===''?-1:a[1].room.localeCompare(b[1].room,'ru')));
   rooms.replaceChildren(el('button',{class:BR.room==='*'?'on':'',onclick:()=>{BR.room='*';renderBrowser();}},'Все помещения',el('small',null,String(inObj.length))),
-    ...rl.map(([r,n])=>el('button',{class:BR.room===r?'on':'',onclick:()=>{BR.room=r;renderBrowser();}},r||'Без комнаты',el('small',null,String(n)))));
+    ...rl.map(([k,o])=>el('button',{class:BR.room===k?'on':'',onclick:()=>{BR.room=k;renderBrowser();}},roomTitle(o)||'Без комнаты',el('small',null,String(o.n)))));
   // действия объекта
   const one=BR.obj!=='*'?BR.obj:(objs.length===1?objs[0]:null);
-  $('#brObjAct').replaceChildren(...(one!==null?[el('button',{onclick:()=>{closeBrowser();openStickers(one);}},'Наклейки объекта'),el('button',{onclick:()=>renameGroup(one,null)},'Переименовать объект')]:[]));
+  $('#brObjAct').replaceChildren(el('button',{onclick:newObject},'+ Объект'),el('button',{onclick:newRoom},'+ Помещение'),...(one!==null?[el('button',{onclick:()=>{closeBrowser();openStickers(one);}},'Наклейки объекта'),el('button',{onclick:()=>renameGroup(one,null)},'Переименовать объект')]:[]));
   // карточки
   const cmpN=(a,b)=>(a.name||'').localeCompare(b.name||'','ru');
   let shown=0;
@@ -2938,17 +3113,35 @@ function renderBrowser(){
     shown=list.length;
     if(list.length) body.append(el('div',{class:'cat'},...list.map(pCard)));
   }else{
-    const multi=groupWalls().length>1;
-    for(const g of groupWalls()){
+    const multi=groups.length>1;
+    const plain=!BR.q.trim()&&BR.kind==='all';
+    for(const g of groups){
+      let lastLv;const hasLv=g.rooms.some(r=>r.level);
+      if(!g.rooms.length&&plain&&BR.room==='*'&&(BR.obj==='*'||g.obj===BR.obj)&&g.obj){
+        shown++;
+        body.append(el('div',{class:'catH'},el('span',null,el('b',null,g.obj),el('small',null,'объект пуст')),
+          el('button',{onclick:newRoom},'+ Помещение'),el('button',{onclick:()=>renameGroup(g.obj,null)},'Изменить'),el('button',{onclick:()=>structDelObj(g.obj)},'Удалить')));
+      }
       for(const r of g.rooms){
         let walls=r.walls.filter(p=>brMatch(p,{}));
+        const lvHead=()=>{if(hasLv&&r.level!==lastLv){lastLv=r.level;body.append(el('div',{class:'lvH'},el('span',null,(multi&&BR.obj==='*'&&g.obj?g.obj+' › ':'')+(r.level||'Без этажа')),r.level?el('button',{onclick:()=>renameLevel(g.obj,r.level)},'Изменить этаж'):null));}};
+        if(!r.walls.length){
+          if(plain&&(BR.obj==='*'||g.obj===BR.obj)&&(BR.room==='*'||BR.room===lvKey(r.level,r.room))){
+            shown++;lvHead();
+            body.append(el('div',{class:'catH'},el('span',null,el('b',null,((multi&&BR.obj==='*'&&g.obj&&!hasLv)?g.obj+' › ':'')+(r.room||'Без комнаты')),el('small',null,'пусто')),
+              el('button',{'aria-label':'Добавить в комнату',onclick:()=>addToRoom(g.obj,r.room,r.level)},'+'),
+              el('button',{onclick:()=>renameGroup(g.obj,r.room,r.level)},'Изменить'),el('button',{onclick:()=>structDelRoom(g.obj,r.room,r.level)},'Удалить')));
+            body.append(el('div',{class:'brEmpty'},el('p',null,'Здесь пока ничего нет. Нажмите «+», чтобы добавить стену, пол или потолок.')));
+          }
+          continue;
+        }
         if(!walls.length) continue;
         if(BR.sort==='name') walls=walls.slice().sort(cmpN);
-        shown+=walls.length;
-        body.append(el('div',{class:'catH'},el('span',null,el('b',null,((multi&&BR.obj==='*'&&g.obj)?g.obj+' › ':'')+(r.room||'Без комнаты')),el('small',null,roomCounts(r.walls))),
-          el('button',{'aria-label':'Добавить в комнату',onclick:()=>addToRoom(g.obj,r.room)},'+'),
-          el('button',{onclick:()=>{closeBrowser();openPassport(g.obj,r.room);}},'Паспорт'),
-          el('button',{onclick:()=>renameGroup(g.obj,r.room)},'Изменить')));
+        shown+=walls.length;lvHead();
+        body.append(el('div',{class:'catH'},el('span',null,el('b',null,((multi&&BR.obj==='*'&&g.obj&&!hasLv)?g.obj+' › ':'')+(r.room||'Без комнаты')),el('small',null,roomCounts(r.walls))),
+          el('button',{'aria-label':'Добавить в комнату',onclick:()=>addToRoom(g.obj,r.room,r.level)},'+'),
+          el('button',{onclick:()=>{closeBrowser();openPassport(g.obj,r.room,r.level);}},'Паспорт'),
+          el('button',{onclick:()=>renameGroup(g.obj,r.room,r.level)},'Изменить')));
         body.append(el('div',{class:'cat'},...walls.map(pCard)));
       }
     }
@@ -2961,39 +3154,51 @@ $('#brObj').addEventListener('change',e=>{BR.obj=e.target.value;BR.room='*';rend
 $('#brSort').addEventListener('change',e=>{BR.sort=e.target.value;renderBrowser();});
 function pl3(n,a,b,c){const x=n%10,y=n%100;return n+' '+(x===1&&y!==11?a:(x>=2&&x<=4&&(y<12||y>14))?b:c);}
 function roomCounts(list){
-  const n={wall:0,floor:0,ceiling:0};for(const p of list) n[p.kind||'wall']++;
-  return [n.wall?pl3(n.wall,'стена','стены','стен'):'',n.floor?pl3(n.floor,'пол','пола','полов'):'',n.ceiling?pl3(n.ceiling,'потолок','потолка','потолков'):''].filter(Boolean).join(', ')||'пусто';
+  const n={};for(const p of list){const k=KINDS[p.kind]?p.kind:'wall';n[k]=(n[k]||0)+1;}
+  return Object.keys(KINDS).filter(k=>n[k]).map(k=>pl3(n[k],...KINDS[k].pl)).join(', ')||'пусто';
 }
-function addToRoom(obj,room){closeBrowser();addWallMenu({obj:obj||'',room:room||''});}
+function addToRoom(obj,room,level){closeBrowser();addWallMenu({obj:obj||'',room:room||'',level:level||''});}
 async function moveSurface(p){
   const v=await modal({title:'Перенести в другое помещение',text:'Если такая комната уже есть, поверхность окажется рядом с её стенами, полами и потолками.'+(p.group?' Все снимки монтажа этой отделки переносятся вместе.':''),
-    fields:[{key:'obj',label:'Объект',value:p.obj||'',max:80,suggest:objNames()},{key:'room',label:'Комната',value:p.room||'',max:60,suggest:roomNames(p.obj||'')}],ok:'Перенести'});
+    fields:[{key:'obj',label:'Объект',value:p.obj||'',max:80,suggest:objNames()},{key:'level',label:'Этаж или уровень (необязательно)',value:p.level||'',max:40,suggest:levelNames(p.obj||'')},{key:'room',label:'Комната',value:p.room||'',max:60,suggest:roomNames(p.obj||'')}],ok:'Перенести'});
   if(!v) return;
   const ps=p.group?S.projects.filter(x=>x.group===p.group):[p];
-  await histBatch('Перенос в «'+(v.room.trim()||'без комнаты')+'»',ps,async()=>{for(const x of ps){x.obj=v.obj.trim();x.room=v.room.trim();x.updated=Date.now();try{await DB.put(x);}catch(e){}}});
+  await histBatch('Перенос в «'+(v.room.trim()||'без комнаты')+'»',ps,async()=>{for(const x of ps){x.obj=v.obj.trim();x.level=v.level.trim();x.room=v.room.trim();x.updated=Date.now();try{await DB.put(x);}catch(e){}}});
   renderAll();
 }
 function openWall(p){closeBrowser();if(S.cur!==p) setCurrent(p);switchTab('draw');}
 function openBrowser(){BR.q='';BR.kind='all';BR.room='*';BR.obj='*';$('#brQ').value='';renderBrowser();$('#browser').hidden=false;}
 function closeBrowser(){$('#browser').hidden=true;}
-async function renameGroup(obj,room){
+async function renameGroup(obj,room,level){
+  level=level||'';
   const isRoom=room!==null,cur=isRoom?room:obj;
   const v=await modal({title:isRoom?'Название комнаты':'Название объекта',text:isRoom?'Изменится у всех стен, полов и потолков этой комнаты. Если комната с таким названием уже есть, они объединятся.':'Изменится у всех стен этого объекта.',
     fields:[{key:'name',label:'Название',value:cur,max:isRoom?60:80,suggest:isRoom?roomNames(obj):objNames()}],ok:'Сохранить'});
   if(!v) return;
   const nn=v.name.trim();
-  const affected=S.projects.filter(p=>isRoom?((p.obj||'')===obj&&(p.room||'')===room):(p.obj||'')===obj);
-  await histBatch((isRoom?'Переименована комната':'Переименован объект')+' «'+nn+'»',affected,async()=>{for(const p of affected){if(isRoom) p.room=nn; else p.obj=nn;p.updated=Date.now();try{await DB.put(p);}catch(e){}}});
+  const affected=S.projects.filter(p=>isRoom?sameRoom(p,{obj,level,room}):(p.obj||'')===obj);
+  structRename(obj,isRoom?room:null,nn,level);
+  if(affected.length) await histBatch((isRoom?'Переименована комната':'Переименован объект')+' «'+nn+'»',affected,async()=>{for(const p of affected){if(isRoom) p.room=nn; else p.obj=nn;p.updated=Date.now();try{await DB.put(p);}catch(e){}}});
+  renderAll();
+}
+async function renameLevel(obj,level){
+  const v=await modal({title:'Название этажа',text:'Изменится у всех помещений этого этажа. Если этаж с таким названием уже есть, помещения объединятся.',fields:[{key:'name',label:'Название',value:level,max:40,suggest:levelNames(obj)}],ok:'Сохранить'});
+  if(!v) return;const nn=v.name.trim();
+  const affected=S.projects.filter(p=>(p.obj||'')===obj&&(p.level||'')===level);
+  structRename(obj,'\u0003',nn,level);
+  if(affected.length) await histBatch('Переименован этаж «'+nn+'»',affected,async()=>{for(const p of affected){p.level=nn;p.updated=Date.now();try{await DB.put(p);}catch(e){}}});
   renderAll();
 }
 function locationCard(p){
   const objInp=el('input',{type:'text',maxlength:'80',placeholder:'Объект',list:'dlObj2'});objInp.value=p.obj||'';
   const roomInp=el('input',{type:'text',maxlength:'60',placeholder:'Комната',list:'dlRoom2'});roomInp.value=p.room||'';
-  const put=async()=>{p.obj=objInp.value.trim().slice(0,80);p.room=roomInp.value.trim().slice(0,60);p.updated=Date.now();try{await DB.put(p);}catch(e){}renderHeader();};
-  objInp.addEventListener('change',put);roomInp.addEventListener('change',put);
+  const lvInp=el('input',{type:'text',maxlength:'40',placeholder:'Например, 1 этаж',list:'dlLv2'});lvInp.value=p.level||'';
+  const put=async()=>{p.obj=objInp.value.trim().slice(0,80);p.level=lvInp.value.trim().slice(0,40);p.room=roomInp.value.trim().slice(0,60);p.updated=Date.now();try{await DB.put(p);}catch(e){}renderHeader();};
+  objInp.addEventListener('change',put);roomInp.addEventListener('change',put);lvInp.addEventListener('change',put);
   return el('div',{class:'card'},el('h2',null,'Расположение'),
     el('div',{class:'mut'},'Можно разложить полученные стены по своим объектам и комнатам.'),
-    el('label',{class:'mut'},'Объект'),objInp,el('label',{class:'mut'},'Комната'),roomInp,
+    el('label',{class:'mut'},'Объект'),objInp,el('label',{class:'mut'},'Этаж или уровень'),lvInp,el('label',{class:'mut'},'Комната'),roomInp,
+    el('datalist',{id:'dlLv2'},...levelNames(p.obj||'').map(v=>el('option',{value:v}))),
     el('datalist',{id:'dlObj2'},...objNames().map(v=>el('option',{value:v}))),
     el('datalist',{id:'dlRoom2'},...roomNames(p.obj||'').map(v=>el('option',{value:v}))));
 }
@@ -3001,7 +3206,7 @@ $('#brClose').addEventListener('click',closeBrowser);
 $('#brAdd').addEventListener('click',()=>{closeBrowser();addWallMenu();});
 
 /* ---------- Офлайн и установка ---------- */
-const APP_VERSION='7.4';
+const APP_VERSION='7.8';
 const OFF={sw:'checking',cached:false,persisted:null};
 const INST={evt:null};
 async function refreshOffline(){
@@ -3072,6 +3277,7 @@ $$('nav button').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.t
 if(wideMq.addEventListener) wideMq.addEventListener('change',()=>{const a=document.querySelector('.tab.active');switchTab(a?a.id.slice(4):'draw');});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&CAM.mode!=='off') camStop();if(document.hidden&&cap.stream) capClose();});
 
+applyRole();
 function renderAll(){renderHeader();updateEditorUI();renderEditor();renderData();renderChips();updateCamUI();}
 
 if(typeof ResizeObserver!=='undefined'){
@@ -3087,7 +3293,7 @@ if(typeof ResizeObserver!=='undefined'){
 (async function boot(){
   await DB.open();
   try{S.projects=(await DB.all()).sort((a,b)=>(a.updated||0)-(b.updated||0));}catch(e){S.projects=[];}
-  S.projects.forEach(p=>{p.room=p.room||'';p.date=p.date||'';p.scaleCm=p.scaleCm||0;p.fin=p.fin||null;});
+  S.projects.forEach(p=>{p.room=p.room||'';p.level=p.level||'';p.date=p.date||'';p.scaleCm=p.scaleCm||0;p.fin=p.fin||null;});
   const last=LS.get('sloy-last');
   ED.size=fitCanvas(cv);
   setCurrent(S.projects.find(p=>p.id===last)||S.projects[S.projects.length-1]||null);
