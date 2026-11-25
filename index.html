@@ -239,6 +239,16 @@ nav button.active{color:var(--acc)}
 #toast button{margin-left:12px;min-height:32px;padding:0 12px;font-size:13px;background:#4c8dff;color:#fff;border:0;border-radius:8px;font-weight:600}
 #toast:has(button){display:flex;align-items:center}
 @media (max-width:480px){header h1{font-size:13px}#undoBtn,#redoBtn{min-width:36px}header{gap:5px}}
+/* v7.2: проще и понятнее */
+.lenBox{display:flex;flex-direction:column;gap:6px;margin:4px 0 10px}
+.lenBox[hidden]{display:none}
+.emT{margin:0 0 10px;font-size:18px}
+.steps{text-align:left;margin:0 0 16px;padding-left:22px;color:var(--mut);font-size:14px;line-height:1.45;display:flex;flex-direction:column;gap:8px}
+.steps b{color:var(--fg)}
+.helpCard summary{font-weight:650;cursor:pointer;min-height:36px;display:flex;align-items:center}
+.helpCard ol,.helpCard ul{margin:6px 0 4px;padding-left:20px;color:var(--mut);font-size:14px;line-height:1.5}
+.helpCard b{color:var(--fg)}
+@media (max-width:480px){#passBtn{display:none}}
 </style>
 </head>
 <body>
@@ -270,15 +280,20 @@ nav button.active{color:var(--acc)}
         <button id="adjReset">Сброс</button>
       </div>
       <label id="lineRow" class="slider" hidden>Толщина трасс <input type="range" id="lineW" min="1" max="6" step="0.5" value="1.5"></label>
-      <label id="blendRow" class="slider" hidden>Снимок монтажа <input type="range" id="blendA" min="0" max="100" value="50"></label>
+      <label id="blendRow" class="slider" hidden>Видимость монтажа <input type="range" id="blendA" min="0" max="100" value="50"></label>
       <div id="edHint" class="hint"></div>
       <div class="wrap" id="edWrap">
         <canvas id="cv"></canvas>
         <div id="edEmpty" class="empty" hidden>
           <div>
-            <p>Сфотографируйте открытую стену до отделки или загрузите готовый чертёж. Лучше всего подходит вид прямо на одну стену или потолок.</p>
+            <h2 class="emT">С чего начать</h2>
+            <ol class="steps">
+              <li><b>Снимите открытую стену</b> до отделки, пока видны трубы и кабели.</li>
+              <li><b>Отметьте трассы</b> линиями и поставьте 2–3 опорные точки.</li>
+              <li><b>Снимите ту же стену после отделки.</b> Приложение совместит снимки и покажет, где проходят сети.</li>
+            </ol>
             <div class="row"><button id="btnShoot" class="primary">Снять стену</button><button id="btnFirst">Выбрать файл</button></div>
-            <p style="margin:18px 0 8px">Прислали файл от бригады?</p>
+            <p style="margin:16px 0 8px">Прислали файл от бригады?</p>
             <button id="btnOpenFile">Открыть присланный файл</button>
           </div>
         </div>
@@ -616,6 +631,21 @@ function histLabel(a,b){
   if(a.scaleCm!==b.scaleCm) return 'Изменён масштаб';
   if(['name','obj','room','kind','date'].some(k=>a[k]!==b[k])) return 'Изменены данные поверхности';
   return 'Изменение';
+}
+// Длина трассы на чертеже, в пикселях
+function routePxLen(r){let t=0;for(let i=0;i<r.pts.length-1;i++) t+=Math.hypot(r.pts[i+1][0]-r.pts[i][0],r.pts[i+1][1]-r.pts[i][1]);return t;}
+// Сводка длин: projects=[{name,k,routes}], k — пикселей в сантиметре (0 — масштаб не задан)
+function lenSummary(projects){
+  const items=[],byType={};let total=0,skipped=0;
+  for(const q of projects){
+    if(!q.k){if(q.routes.length) skipped++;continue;}
+    for(const r of q.routes){
+      const cm=routePxLen(r)/q.k;
+      items.push({surf:q.name,type:r.type,cm,note:r.note||''});
+      const b=byType[r.type]||(byType[r.type]={n:0,cm:0});b.n++;b.cm+=cm;total+=cm;
+    }
+  }
+  return {items,byType,total,skipped};
 }
 //@@PURE-END
 
@@ -1150,7 +1180,7 @@ function hintText(){
     return 'Снимок после отделки, сети показаны по совмещению. '+(A?alignText(p,A):'Отметьте минимум 2 опорные точки.');
   }
   if(S.layer==='blend'&&S.tool==='adj') return HINTS.adj;
-  if(S.layer==='blend') return 'Наложение: ползунок задаёт прозрачность снимка монтажа поверх отделки. Сети показаны линиями.';
+  if(S.layer==='blend') return 'Наложение: ползунок «Видимость монтажа» показывает снимок монтажа поверх отделки. Цветные линии — сети.';
   return HINTS[S.tool];
 }
 function setLayer(L){
@@ -1441,7 +1471,7 @@ $('#projBtn').addEventListener('click',()=>openBrowser());
 
 function renderHeader(){
   const b=$('#projBtn'),p=S.cur;b.replaceChildren();
-  if(!p) b.append(el('b',null,'Нет снимков ▾'),el('span',null,'Нажмите, чтобы добавить'));
+  if(!p) b.append(el('b',null,'Нет стен ▾'),el('span',null,'Нажмите, чтобы добавить'));
   else b.append(el('b',null,(p.viewOnly?'👁 ':'')+p.name+' ▾'),el('span',null,(isLinked(p)?'✓ привязано · ':'')+([p.obj,p.room,p.kind&&p.kind!=='wall'?kindOf(p).name:''].filter(Boolean).join(' › ')||'Без объекта и комнаты')));
   if(!$('#browser').hidden) renderBrowser();
 }
@@ -1727,7 +1757,21 @@ function dataProject(p,body){
     el('button',{onclick:()=>exportDialog('view')},'Файл для просмотра (заказчику, владельцу)'),
     el('button',{onclick:()=>fileBak.click()},'Загрузить копию из файла'),
     el('button',{class:'danger',onclick:delProject},'Удалить этот чертёж')));
+  body.append(helpCard());
   body.append(storageCard());
+}
+function helpCard(){
+  const d=el('details',{class:'card helpCard'},el('summary',null,'Как пользоваться'));
+  d.append(el('ol',null,
+    el('li',null,el('b',null,'Монтаж. '),'Снимите открытую стену, на вкладке «Чертёж» выберите «Трасса» и обведите кабель или трубу. «Опора» ставит опорные точки: углы, розетки, любые заметные места.'),
+    el('li',null,el('b',null,'Отделка. '),'После ремонта снимите ту же стену (слой «Отделка») и коснитесь тех же точек. Слой «Наложение» покажет сети поверх готовой стены.'),
+    el('li',null,el('b',null,'Паспорт. '),'Кнопка «Паспорт» собирает PDF по помещениям: его можно распечатать или отправить.')),
+    el('div',{class:'mut'},'Если ошиблись:'),
+    el('ul',null,
+      el('li',null,'кнопки ↶ и ↷ вверху отменяют и возвращают действия (на компьютере Ctrl+Z);'),
+      el('li',null,'в «Данные → Проект → История действий» можно откатить сразу несколько шагов;'),
+      el('li',null,'сети показаны ориентировочно, перед сверлением проверьте стену прибором.')));
+  return d;
 }
 function roughCard(p){
   const k=pxPerCm(p);
@@ -1737,8 +1781,40 @@ function roughCard(p){
       el('button',{onclick:()=>cropDialog('rough')},'Обрезать')),
     el('div',{class:'mut'},p.w+' × '+p.h+' пикселей'));
 }
+function lenBlock(p,scope,box){
+  const list=scope==='obj'?S.projects.filter(x=>(x.obj||'')===(p.obj||'')):scope==='room'?S.projects.filter(x=>(x.obj||'')===(p.obj||'')&&(x.room||'')===(p.room||'')):[p];
+  const R=lenSummary(list.map(x=>({name:x.name,k:pxPerCm(x),routes:x.routes})));
+  box.replaceChildren();
+  if(!R.items.length){
+    box.append(el('div',{class:'mut'},R.skipped?'Для '+(scope==='one'?'этой поверхности':'выбранных поверхностей')+' не задан масштаб, поэтому длины посчитать нельзя.':'Трасс пока нет.'));
+    if(R.skipped&&scope==='one'&&!RO()) box.append(el('button',{onclick:async()=>{await askScale();renderData();}},'Задать масштаб'));
+    return;
+  }
+  const rows=[];
+  for(const [t,b] of Object.entries(R.byType)) rows.push(((TYPES[t]||TYPES.other).name)+': '+pl3(b.n,'трасса','трассы','трасс')+', '+fmtLen(b.cm));
+  const txt=rows.concat(['Всего: '+pl3(R.items.length,'трасса','трассы','трасс')+', '+fmtLen(R.total)]);
+  const det=R.items.map(it=>((TYPES[it.type]||TYPES.other).name)+(scope==='one'?'':' · '+it.surf)+(it.note?' · '+it.note:'')+': '+fmtLen(it.cm));
+  for(const [t,b] of Object.entries(R.byType)){
+    box.append(el('div',{class:'item'},el('span',{class:'dot',style:'background:'+((TYPES[t]||TYPES.other).color)}),
+      el('div',{class:'grow'},el('b',null,(TYPES[t]||TYPES.other).name),el('div',{class:'mut'},pl3(b.n,'трасса','трассы','трасс'))),el('b',null,fmtLen(b.cm))));
+  }
+  box.append(el('div',{class:'item'},el('div',{class:'grow'},el('b',null,'Всего')),el('b',null,fmtLen(R.total))));
+  if(R.skipped) box.append(el('div',{class:'mut'},'Не учтено поверхностей без масштаба: '+R.skipped+'.'));
+  box.append(el('div',{class:'mut'},'Длина считается по линии на чертеже. Реальный кабель или труба длиннее: добавьте запас на изгибы, подключение и обрезку. Точность зависит от масштаба.'));
+  box.append(el('button',{onclick:async()=>{
+    const all=txt.concat(['',...det]).join('\n');
+    try{await navigator.clipboard.writeText(all);toast('Скопировано');}catch(e){toast('Не удалось скопировать. Выделите текст вручную.');}
+  }},'Скопировать расчёт'));
+}
 function routesCard(p){
   const rc=el('div',{class:'card'},el('h2',null,'Трассы ('+p.routes.length+')'));
+  if(p.routes.length){
+    const box=el('div',{class:'lenBox',hidden:true});
+    const sel=el('select',{'aria-label':'Что считать'},el('option',{value:'one'},'Эта поверхность'),el('option',{value:'room'},'Вся комната'),el('option',{value:'obj'},'Весь объект'));
+    const go=()=>{box.hidden=false;lenBlock(p,sel.value,box);};
+    sel.addEventListener('change',()=>{if(!box.hidden) go();});
+    rc.append(el('div',{class:'row'},el('button',{class:'primary',id:'btnCalc',onclick:go},'Посчитать длины'),sel),box);
+  }
   if(!p.routes.length) rc.append(el('div',{class:'mut'},'Пока нет. На вкладке «Чертёж» выберите «Трасса».'));
   for(const r of p.routes){
     const t=TYPES[r.type]||TYPES.other;
@@ -2223,16 +2299,34 @@ async function coverPage(D,list){
     cl.forEach((c,i)=>{D.x.fillStyle=c;D.x.fillRect(MG+i*32,D.y+6,26,26);D.x.strokeStyle='#98a2b3';D.x.lineWidth=2;D.x.strokeRect(MG+i*32,D.y+6,26,26);});
     put(D,t.name+' — '+a.n+' '+plural(a.n)+(a.has?', '+fmtLen(a.cm):''),{size:26,x:MG+cl.length*32+10});D.y+=4;
   }
+  const sl=p=>{const k=pxPerCm(p);if(!k) return null;let c=0;for(const r of p.routes) c+=routePxLen(r);return c/k;};
+  let totCm=0,totHas=false;for(const p of list){const v=sl(p);if(v!==null){totCm+=v;totHas=true;}}
+  if(totHas){
+    await ensure(D,50);
+    D.x.strokeStyle='#98a2b3';D.x.lineWidth=2;D.x.beginPath();D.x.moveTo(MG,D.y+4);D.x.lineTo(PW-MG,D.y+4);D.x.stroke();D.y+=10;
+    put(D,'Всего: '+list.reduce((n,p)=>n+p.routes.length,0)+' '+plural(list.reduce((n,p)=>n+p.routes.length,0))+', '+fmtLen(totCm),{size:28,bold:true});D.y+=4;
+  }
+  const roomsM=new Map();
+  for(const p of list){const key=(p.obj||'')+'\u0001'+(p.room||'');const o=roomsM.get(key)||{obj:p.obj||'',room:p.room||'',n:0,cm:0,has:false};o.n+=p.routes.length;const v=sl(p);if(v!==null){o.cm+=v;o.has=true;}roomsM.set(key,o);}
+  if(roomsM.size>1&&totHas){
+    D.y+=8;await ensure(D,90);
+    put(D,'Длины по помещениям',{size:28,bold:true});D.y+=4;
+    for(const o of roomsM.values()){
+      await ensure(D,40);
+      put(D,(o.room||'Без комнаты')+(D.meta.obj===o.obj||!o.obj?'':' · '+o.obj)+' — '+o.n+' '+plural(o.n)+(o.has?', '+fmtLen(o.cm):', масштаб не задан'),{size:24});D.y+=2;
+    }
+  }
   if(noScale) put(D,'Длины посчитаны только для стен с заданным масштабом.',{size:22,color:'#667085'});
+  if(totHas) put(D,'Длина считается по линии на схеме. Реальный кабель или труба длиннее: добавьте запас на изгибы и подключение.',{size:22,color:'#667085'});
   D.y+=24;
 
   await ensure(D,160);
   put(D,'Состав паспорта',{size:32,bold:true});D.y+=8;
-  const cols=[MG+10,MG+250,MG+700,MG+830,MG+940];
+  const cols=[MG+10,MG+230,MG+610,MG+740,MG+830,MG+970];
   const head=()=>{
     D.x.fillStyle='#f2f4f7';D.x.fillRect(MG,D.y,PW-2*MG,48);
     D.x.font=fontOf(22,true);D.x.fillStyle='#344054';D.x.textAlign='left';
-    ['Код','Объект · комната · название','Съёмка','Трасс','Отделка'].forEach((h,i)=>D.x.fillText(h,cols[i],D.y+32));
+    ['Код','Объект · комната · название','Съёмка','Трасс','Длина','Отделка'].forEach((h,i)=>D.x.fillText(h,cols[i],D.y+32));
     D.y+=54;
   };
   head();
@@ -2244,7 +2338,8 @@ async function coverPage(D,list){
     D.x.fillText(fitText(D.x,wallSub(D,p)||'—',cols[2]-cols[1]-14),cols[1],D.y+31);
     D.x.fillText(fmtDate(p.date)||'—',cols[2],D.y+31);
     D.x.fillText(String(p.routes.length),cols[3],D.y+31);
-    D.x.fillText(p.fin?(fmtDate(p.fin.date)||'есть'):'нет',cols[4],D.y+31);
+    {const v=sl(p);D.x.fillText(v===null?(p.routes.length?'—':'0'):fmtLen(v),cols[4],D.y+31);}
+    D.x.fillText(p.fin?(fmtDate(p.fin.date)||'есть'):'нет',cols[5],D.y+31);
     D.x.strokeStyle='#e4e7ec';D.x.lineWidth=1.5;D.x.beginPath();D.x.moveTo(MG,D.y+46);D.x.lineTo(PW-MG,D.y+46);D.x.stroke();
     D.y+=48;
   }
@@ -2906,7 +3001,7 @@ $('#brClose').addEventListener('click',closeBrowser);
 $('#brAdd').addEventListener('click',()=>{closeBrowser();addWallMenu();});
 
 /* ---------- Офлайн и установка ---------- */
-const APP_VERSION='7.1';
+const APP_VERSION='7.4';
 const OFF={sw:'checking',cached:false,persisted:null};
 const INST={evt:null};
 async function refreshOffline(){
