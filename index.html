@@ -361,6 +361,8 @@ body.client .crew,body.client #brObjAct{display:none!important}
         </div>
         <label class="slider">Яркость трасс <input type="range" id="alpha" min="20" max="100" value="85"></label>
         <label class="slider">Просвет стены (снимок монтажа) <input type="range" id="ghost" min="0" max="100" value="0"></label>
+        <div class="mut">Что показывать</div>
+        <div id="camLayers" class="row"></div>
         <div id="chips" class="chips"></div>
       </div>
     </section>
@@ -744,7 +746,7 @@ let ROLE=(function(){try{return localStorage.getItem('sloy-role')==='client'?'cl
 function vo(p){return !!(p&&(p.viewOnly||ROLE==='client'));}
 const S={dataSec:'project',lineW:1.5,preset:null,projects:[],cur:null,img:null,tool:'pan',draft:[],view:{s:1,tx:0,ty:0},needFit:false,lastType:'el',persistAsked:false,meas:[],layer:'rough',imgFin:null,finMode:false,blend:0.5};
 const ED={size:{w:0,h:0,d:1}};
-const CAM={stream:null,mode:'off',pts:[],T:null,adj:IDENT,size:null,frozen:false,alpha:0.85,ghost:0,probe:false,probeAt:null,hidden:new Set()};
+const CAM={stream:null,mode:'off',pts:[],T:null,adj:IDENT,size:null,frozen:false,alpha:0.85,ghost:0,probe:false,probeAt:null,hidden:new Set(),noRoutes:false,noAnch:false};
 const LETTERS=['A','B','C','D'];
 const routeColor=r=>(r&&HEXC.test(r.color||'')?r.color:(TYPES[r&&r.type]||TYPES.other).color);
 const kindOf=p=>KINDS[p&&p.kind]||KINDS.wall;
@@ -1288,7 +1290,7 @@ async function removeFin(){
   fitView();save();renderAll();
 }
 function finCard(p){
-  const c=el('div',{class:'card'},el('h2',null,'Снимок после отделки'));
+  const c=el('div',{class:'card'},el('h2',null,'7. Слой отделки: снимок'));
   if(!p.fin){
     c.append(el('div',{class:'mut'},'Снимите ту же стену после отделки. Приложение совместит снимок с монтажом по опорным точкам и покажет, где под отделкой проходят сети.'),
       el('button',{class:'primary',onclick:()=>startFin()},'Добавить снимок после отделки'));
@@ -1780,22 +1782,25 @@ function dataProject(p,body){
   dateInp.addEventListener('change',()=>{p.date=dateInp.value;save();});
   const kindSel=el('select',null,...Object.entries(KINDS).map(([k,t])=>el('option',{value:k},t.opt||t.name)));kindSel.value=p.kind||'wall';
   kindSel.addEventListener('change',()=>{p.kind=kindSel.value;save();renderHeader();renderData();});
-  body.append(el('div',{class:'card'},el('h2',null,'Поверхность: '+kindOf(p).name.toLowerCase()),
-    el('label',{class:'mut'},'Что это'),kindSel,
-    el('label',{class:'mut'},'Название'),nameInp,
-    el('label',{class:'mut'},'Объект'),objInp,
-    el('label',{class:'mut'},'Этаж или уровень'),lvInp,
-    el('label',{class:'mut'},'Комната'),roomInp,
-    el('datalist',{id:'dlLv'},...levelNames(p.obj||'').map(v=>el('option',{value:v}))),
+  const finDate=el('input',{type:'date'});finDate.value=(p.fin&&p.fin.date)||'';
+  finDate.addEventListener('change',()=>{if(p.fin){p.fin.date=finDate.value;save();}});
+  body.append(el('datalist',{id:'dlLv'},...levelNames(p.obj||'').map(v=>el('option',{value:v}))),
     el('datalist',{id:'dlObj'},...objNames().map(v=>el('option',{value:v}))),
-    el('datalist',{id:'dlRoom'},...roomNames(p.obj||'').map(v=>el('option',{value:v}))),
-    el('label',{class:'mut'},'Дата съёмки монтажа'),dateInp));
-  body.append(el('div',{class:'card'},el('h2',null,'Помещение'),
+    el('datalist',{id:'dlRoom'},...roomNames(p.obj||'').map(v=>el('option',{value:v}))));
+  body.append(el('div',{class:'card'},el('h2',null,'1. Объект'),objInp));
+  body.append(el('div',{class:'card'},el('h2',null,'2. Этаж или уровень'),lvInp));
+  body.append(el('div',{class:'card'},el('h2',null,'3. Помещение'),roomInp,
     el('div',{class:'mut'},(roomTitle(p)||'Без комнаты')+': '+roomCounts(S.projects.filter(x=>sameRoom(x,p)))),
     el('div',{class:'row'},
       el('button',{onclick:openBrowser},'Каталог'),
       el('button',{onclick:()=>openPassport(p.obj||'',p.room||'',p.level||'')},'Паспорт'),
       el('button',{onclick:()=>openStickers(p.obj||'')},'Наклейки'))));
+  body.append(el('div',{class:'card'},el('h2',null,'4. Поверхность: '+kindOf(p).name.toLowerCase()),
+    el('label',{class:'mut'},'Что это'),kindSel,
+    el('label',{class:'mut'},'Название'),nameInp,
+    el('label',{class:'mut'},'Дата съёмки монтажа'),dateInp,
+    el('label',{class:'mut'},'Дата съёмки отделки'),p.fin?finDate:el('div',{class:'mut'},'Снимка после отделки пока нет.'),
+    el('div',{class:'mut'},'Дальше, во вкладке «Слои»: 5. монтаж, 6. трассы, 7. отделка.')));
   body.append(reportCard(p),brandCard(),histCard());
   body.append(el('div',{class:'card'},el('h2',null,'Копия и удаление'),
     el('button',{class:'primary',onclick:exportProject},'Сохранить копию в файл'),
@@ -1808,21 +1813,21 @@ function dataProject(p,body){
 function helpCard(){
   const d=el('details',{class:'card helpCard'},el('summary',null,'Как пользоваться'));
   d.append(el('ol',null,
-    el('li',null,el('b',null,'Монтаж. '),'Снимите открытую стену, на вкладке «Чертёж» выберите «Трасса» и обведите кабель или трубу. «Опора» ставит опорные точки: углы, розетки, любые заметные места.'),
-    el('li',null,el('b',null,'Отделка. '),'После ремонта снимите ту же стену (слой «Отделка») и коснитесь тех же точек. Слой «Наложение» покажет сети поверх готовой стены.'),
+    el('li',null,el('b',null,'Структура. '),'Работа идёт от большего к меньшему: объект → этаж (по желанию) → помещение → поверхность (стена, пол, потолок, фасад) → слои: монтаж, трассы, отделка. Туалеты на первом и втором этаже — разные помещения. В каталоге кнопки «+ Объект» и «+ Помещение» создают их заранее, а «+» в помещении добавляет поверхность.'),
+    el('li',null,el('b',null,'Монтаж. '),'Откройте поверхность до закрытия и сфотографируйте её. Поставьте инструментом «Опора» 2–4 опорные точки (углы, розетки, любые заметные места). Инструментом «Трасса» обведите каждый кабель или трубу и укажите тип. Задайте масштаб по рулетке между двумя опорами, чтобы считать длины.'),
+    el('li',null,el('b',null,'Отделка. '),'После ремонта снимите ту же поверхность (слой «Отделка») и коснитесь тех же точек. Слой «Наложение» покажет сети поверх готовой поверхности.'),
     el('li',null,el('b',null,'Снаружи. '),'Фасад, терраса, кровля и участок выбираются в окне «Новая поверхность». Работает так же: снимок до отделки (утепление, штукатурка, плитка) и после. Снимайте строго напротив, с одного места и расстояния. Для длинных фасадов делайте несколько снимков по частям.'),
-    el('li',null,el('b',null,'Структура. '),'Объект → этаж (по желанию) → помещение → стены, полы и потолки. Туалеты на первом и втором этаже — разные помещения. В каталоге кнопки «+ Объект» и «+ Помещение» создают их заранее, а «+» в помещении добавляет поверхность.'),
     el('li',null,el('b',null,'Паспорт. '),'Кнопка «Паспорт» собирает PDF по помещениям: его можно распечатать или отправить.')),
-    el('div',{class:'mut'},'Если ошиблись:'),
+    el('div',{class:'mut'},'Как исправить или вернуть назад:'),
     el('ul',null,
       el('li',null,'кнопки ↶ и ↷ вверху отменяют и возвращают действия (на компьютере Ctrl+Z);'),
-      el('li',null,'в «Данные → Проект → История действий» можно откатить сразу несколько шагов;'),
-      el('li',null,'сети показаны ориентировочно, перед сверлением проверьте стену прибором.')));
+      el('li',null,'в «Данные → Проект → История действий» можно вернуться на несколько шагов назад.')),
+    el('p',{style:'font-weight:700;margin:8px 0 0'},'Сети показаны ориентировочно, перед сверлением проверьте стену прибором.'));
   return d;
 }
 function roughCard(p){
   const k=pxPerCm(p);
-  return el('div',{class:'card'},el('h2',null,'Снимок монтажа'),
+  return el('div',{class:'card'},el('h2',null,'5. Слой монтажа: снимок'),
     el('div',{class:'mut'},k?'Масштаб: расстояние между A и B — '+fmtLen(p.scaleCm)+'.':'Масштаб не задан: длины и расстояния недоступны.'),
     el('div',{class:'row'},el('button',{onclick:askScale},k?'Изменить масштаб':'Задать масштаб'),
       el('button',{onclick:()=>cropDialog('rough')},'Обрезать')),
@@ -1854,7 +1859,7 @@ function lenBlock(p,scope,box){
   }},'Скопировать расчёт'));
 }
 function routesCard(p){
-  const rc=el('div',{class:'card'},el('h2',null,'Трассы ('+p.routes.length+')'));
+  const rc=el('div',{class:'card'},el('h2',null,'6. Слой трасс ('+p.routes.length+')'));
   if(p.routes.length){
     const box=el('div',{class:'lenBox',hidden:true});
     const sel=el('select',{'aria-label':'Что считать'},el('option',{value:'one'},'Эта поверхность'),el('option',{value:'room'},'Вся комната'),el('option',{value:'obj'},'Весь объект'));
@@ -1887,18 +1892,8 @@ function anchorsCard(p){
 }
 function dataLayer(p,body){
   body.append(el('div',{class:'card'},el('h2',null,'Слой на чертеже'),layerSwitch(p)));
-  const L=(p.fin||S.layer==='rough')?S.layer:'rough';
-  if(L==='rough'){
-    body.append(roughCard(p),anchorsCard(p),routesCard(p));
-    if(!p.fin) body.append(finCard(p));
-    const pc=partsCard(p);if(pc) body.append(pc);
-  }else if(L==='fin'){
-    body.append(finCard(p),anchorsCard(p));
-    const pc=partsCard(p);if(pc) body.append(pc);
-  }else{
-    body.append(finCard(p),routesCard(p));
-    const pc=partsCard(p);if(pc) body.append(pc);
-  }
+  body.append(roughCard(p),anchorsCard(p),routesCard(p),finCard(p));
+  const pc=partsCard(p);if(pc) body.append(pc);
 }
 async function addPart(){
   const b=S.cur;if(!b||!b.fin||RO()) return;
@@ -1949,8 +1944,8 @@ function camDraw(){
       ox.save();ox.globalAlpha=CAM.ghost;ox.transform(T.a,T.b,-T.b,T.a,T.tx,T.ty);ox.drawImage(S.img,0,0,p.w,p.h);ox.restore();
     }
     ox.globalAlpha=CAM.alpha;
-    drawRoutes(ox,p,pt=>applySim(T,pt),{width:4,vertices:false,labels:true,hidden:CAM.hidden});
-    p.anchors.forEach((a,i)=>{const q=applySim(T,[a.x,a.y]);drawAnchor(ox,q[0],q[1],LETTERS[i],'',false);});
+    if(!CAM.noRoutes) drawRoutes(ox,p,pt=>applySim(T,pt),{width:4,vertices:false,labels:true,hidden:CAM.hidden});
+    if(!CAM.noAnch) p.anchors.forEach((a,i)=>{const q=applySim(T,[a.x,a.y]);drawAnchor(ox,q[0],q[1],LETTERS[i],'',false);});
     ox.globalAlpha=1;
     probeRender();
   }
@@ -1971,7 +1966,16 @@ function updateCamUI(){
   $('#camProbe').classList.toggle('on',CAM.probe);
   drawRef();
 }
+function renderCamLayers(){
+  const box=$('#camLayers');box.replaceChildren();
+  if(!S.cur) return;
+  const mk=(txt,on,fn)=>box.append(el('button',{class:on?'primary':'','aria-pressed':on?'true':'false',onclick:()=>{fn();renderCamLayers();renderChips();camDraw();}},txt));
+  mk('Трассы',!CAM.noRoutes,()=>{CAM.noRoutes=!CAM.noRoutes;});
+  mk('Опорные точки',!CAM.noAnch,()=>{CAM.noAnch=!CAM.noAnch;});
+  mk('Снимок монтажа',CAM.ghost>0,()=>{CAM.ghost=CAM.ghost>0?0:0.5;$('#ghost').value=Math.round(CAM.ghost*100);});
+}
 function renderChips(){
+  renderCamLayers();
   const box=$('#chips');box.replaceChildren();
   if(!S.cur) return;
   const used=[...new Set(S.cur.routes.map(r=>r.type))];
@@ -2050,7 +2054,7 @@ $('#camFreeze').addEventListener('click',()=>{
   updateCamUI();
 });
 $('#alpha').addEventListener('input',e=>{CAM.alpha=e.target.value/100;camDraw();});
-$('#ghost').addEventListener('input',e=>{CAM.ghost=e.target.value/100;camDraw();});
+$('#ghost').addEventListener('input',e=>{CAM.ghost=e.target.value/100;renderCamLayers();camDraw();});
 function refReady(p){return !!(p&&p.fin&&p.fin.anchors.length>=1);}
 function drawRef(){
   const c=$('#refCv'),p=S.cur;
@@ -2861,7 +2865,7 @@ function roleCard(){
     c.append(el('div',{class:'mut'},'Сейчас режим заказчика. Правка трасс и точек отключена. Доступны наложение, паспорт PDF и ваши заметки с фото.'),
       el('button',{onclick:()=>setRole('crew')},'Войти как монтажник'));
   }else{
-    c.append(el('div',{class:'mut'},'Монтажник: создаёт объекты, снимает, размечает трассы, считает длины и выпускает паспорт. Заказчик только смотрит, скачивает паспорт и добавляет свои заметки.'),
+    c.append(el('div',{class:'mut'},'Монтажник: создаёт объекты, снимает, размечает трассы, считает длины и выпускает паспорт. Заказчик смотрит, скачивает паспорт и добавляет свои заметки.'),
       el('button',{onclick:()=>setRole('client')},'Передать заказчику (режим просмотра)'),
       el('button',{onclick:setPin},LS.get('sloy-pin')?'Сменить или убрать PIN':'Задать PIN монтажника'));
   }
@@ -3211,7 +3215,7 @@ $('#brClose').addEventListener('click',closeBrowser);
 $('#brAdd').addEventListener('click',()=>{closeBrowser();addWallMenu();});
 
 /* ---------- Офлайн и установка ---------- */
-const APP_VERSION='7.9';
+const APP_VERSION='8.0';
 const OFF={sw:'checking',cached:false,persisted:null};
 const INST={evt:null};
 async function refreshOffline(){
